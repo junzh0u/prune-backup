@@ -1,5 +1,5 @@
 use filetime::{set_file_mtime, FileTime};
-use rotate::{rotate_files, RetentionConfig};
+use prune_backup::{rotate_files, RetentionConfig};
 use std::fs::{self, File};
 use std::path::Path;
 use std::time::{Duration, SystemTime};

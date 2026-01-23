@@ -1,11 +1,11 @@
 use anyhow::Result;
 use clap::Parser;
-use rotate::{rotate_files, RetentionConfig};
+use prune_backup::{rotate_files, RetentionConfig};
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
-#[command(name = "rotate")]
-#[command(about = "Rotate backup files based on creation date, keeping recent files and moving old ones to trash")]
+#[command(name = "prune-backup")]
+#[command(about = "Prune backup files based on creation date, keeping recent files and moving old ones to trash")]
 struct Args {
     /// Directory to scan for files
     directory: PathBuf,
