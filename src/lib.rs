@@ -33,17 +33,20 @@ impl Default for RetentionConfig {
     }
 }
 
-/// Gets the creation time of a file, falling back to modification time.
+/// Gets the modification time of a file, falling back to creation time.
+///
+/// Uses modification time as primary because it's more reliable across platforms
+/// and is what backup tools typically track for file age.
 ///
 /// # Errors
 /// Returns an error if file metadata cannot be read or no timestamp is available.
 pub fn get_file_creation_time(path: &Path) -> Result<DateTime<Local>> {
     let metadata = fs::metadata(path).context("Failed to read file metadata")?;
-    let created = metadata
-        .created()
-        .or_else(|_| metadata.modified())
-        .context("Failed to get file creation/modification time")?;
-    Ok(DateTime::from(created))
+    let mtime = metadata
+        .modified()
+        .or_else(|_| metadata.created())
+        .context("Failed to get file modification/creation time")?;
+    Ok(DateTime::from(mtime))
 }
 
 /// Scans a directory for files and returns them sorted by creation time (newest first).
