@@ -1,22 +1,52 @@
-Create a rust project for a CLI tool, named `rotate`.
-It accepts a directory as param, scan all files under the directory and read their creation dates.
-The following retention options are available:
+# CLAUDE.md
 
-* keep-last <N>
-Keep the last <N> backups.
-* keep-hourly <N>
-Keep backups for the last <N> hours. If there is more than one backup for a single hour, only the latest is kept.
-* keep-daily <N>
-Keep backups for the last <N> days. If there is more than one backup for a single day, only the latest is kept.
-* keep-weekly <N>
-Keep backups for the last <N> weeks. If there is more than one backup for a single week, only the latest is kept.
-Note that weeks start on Monday and end on Sunday. The software uses the ISO week date-system and handles weeks at the end of the year correctly.
-* keep-monthly <N>
-Keep backups for the last <N> months. If there is more than one backup for a single month, only the latest is kept.
-* keep-yearly <N>
-Keep backups for the last <N> years. If there is more than one backup for a single year, only the latest is kept.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-And move all other files to trash can, which is `.trash` directory under the working directory.
+## Project Overview
 
-Default options are:
-keep-last=5, keep-hourly=24, keep-daily=7, keep-weekly=4, keep-monthly=12, keep-yearly=10
+`prune-backup` is a Rust CLI tool that manages backup file rotation based on creation dates. It scans a directory and applies retention policies (keep-last, hourly, daily, weekly, monthly, yearly), moving files that don't match any policy to a `.trash` subdirectory.
+
+## Build and Test Commands
+
+```bash
+# Build
+cargo build
+
+# Run tests (unit + integration)
+cargo test
+
+# Run a specific test
+cargo test test_name
+
+# Run with example
+cargo run -- /path/to/backups --keep-last 5 --keep-daily 7
+
+# Dry run (no files moved)
+cargo run -- /path/to/backups --dry-run
+```
+
+## Architecture
+
+**Two-crate structure:**
+- `src/main.rs` - CLI argument parsing with clap, converts args to `RetentionConfig`, calls library
+- `src/lib.rs` - Core logic: file scanning, retention selection, trash operations
+
+**Key types:**
+- `FileInfo` - File path + creation timestamp
+- `RetentionConfig` - All retention policy values (keep_last, keep_hourly, etc.)
+
+**Core algorithm in `select_files_to_keep_with_datetime()`:**
+Retention policies are applied in cascading order. Each policy only considers files not already kept by previous policies:
+1. keep-last (absolute count)
+2. keep-hourly (1 per hour within N hours)
+3. keep-daily (1 per day within N days)
+4. keep-weekly (1 per ISO week within N weeks)
+5. keep-monthly (1 per month within N months)
+6. keep-yearly (1 per year within N years)
+
+Files are sorted newest-first, so the "latest" file in each time period is the first encountered.
+
+**Testing approach:**
+- Unit tests in `src/lib.rs` use mock `FileInfo` with controlled timestamps
+- Integration tests in `tests/integration.rs` use `tempfile` + `filetime` to create real files with specific modification times
+- The `_with_datetime` variant of selection allows injecting a fixed "now" for deterministic tests
