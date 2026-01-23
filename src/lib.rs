@@ -1,5 +1,3 @@
-#![allow(clippy::missing_errors_doc)]
-
 use anyhow::{Context, Result};
 use chrono::{DateTime, Datelike, Local, NaiveDate, Timelike};
 use std::collections::HashSet;
@@ -35,6 +33,10 @@ impl Default for RetentionConfig {
     }
 }
 
+/// Gets the creation time of a file, falling back to modification time.
+///
+/// # Errors
+/// Returns an error if file metadata cannot be read or no timestamp is available.
 pub fn get_file_creation_time(path: &Path) -> Result<DateTime<Local>> {
     let metadata = fs::metadata(path).context("Failed to read file metadata")?;
     let created = metadata
@@ -44,6 +46,10 @@ pub fn get_file_creation_time(path: &Path) -> Result<DateTime<Local>> {
     Ok(DateTime::from(created))
 }
 
+/// Scans a directory for files and returns them sorted by creation time (newest first).
+///
+/// # Errors
+/// Returns an error if the directory cannot be read.
 pub fn scan_files(dir: &Path) -> Result<Vec<FileInfo>> {
     let mut files = Vec::new();
 
@@ -201,6 +207,10 @@ pub fn select_files_to_keep(files: &[FileInfo], config: &RetentionConfig) -> Has
     select_files_to_keep_with_datetime(files, config, now)
 }
 
+/// Moves a file to the trash directory.
+///
+/// # Errors
+/// Returns an error if the file cannot be moved or has no filename.
 pub fn move_to_trash(file: &Path, trash_dir: &Path, dry_run: bool) -> Result<()> {
     let file_name = file.file_name().context("Failed to get file name")?;
     let dest = trash_dir.join(file_name);
@@ -227,6 +237,10 @@ pub fn move_to_trash(file: &Path, trash_dir: &Path, dry_run: bool) -> Result<()>
     Ok(())
 }
 
+/// Rotates files in a directory based on retention policies.
+///
+/// # Errors
+/// Returns an error if the directory cannot be read, trash cannot be created, or files cannot be moved.
 pub fn rotate_files(dir: &Path, config: &RetentionConfig, dry_run: bool) -> Result<(usize, usize)> {
     // Create trash directory
     let trash_dir = dir.join(".trash");
