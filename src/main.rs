@@ -37,10 +37,31 @@ struct Args {
     dry_run: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct FileInfo {
     path: PathBuf,
     created: DateTime<Local>,
+}
+
+#[derive(Debug, Clone)]
+struct RetentionConfig {
+    latest: usize,
+    days: u32,
+    weeks: u32,
+    months: u32,
+    years: u32,
+}
+
+impl From<&Args> for RetentionConfig {
+    fn from(args: &Args) -> Self {
+        Self {
+            latest: args.latest,
+            days: args.days,
+            weeks: args.weeks,
+            months: args.months,
+            years: args.years,
+        }
+    }
 }
 
 fn get_file_creation_time(path: &Path) -> Result<DateTime<Local>> {
@@ -87,12 +108,15 @@ fn get_year_key(date: NaiveDate) -> i32 {
     date.year()
 }
 
-fn select_files_to_keep(files: &[FileInfo], args: &Args) -> HashSet<usize> {
+fn select_files_to_keep_with_date(
+    files: &[FileInfo],
+    config: &RetentionConfig,
+    today: NaiveDate,
+) -> HashSet<usize> {
     let mut keep_indices: HashSet<usize> = HashSet::new();
-    let today = Local::now().date_naive();
 
     // 1. Keep latest N files
-    for i in 0..args.latest.min(files.len()) {
+    for i in 0..config.latest.min(files.len()) {
         keep_indices.insert(i);
     }
 
@@ -103,10 +127,10 @@ fn select_files_to_keep(files: &[FileInfo], args: &Args) -> HashSet<usize> {
     let mut covered_years: HashSet<i32> = HashSet::new();
 
     // Calculate date boundaries
-    let day_boundary = today - chrono::Duration::days(args.days as i64);
-    let week_boundary = today - chrono::Duration::weeks(args.weeks as i64);
-    let month_boundary = today - chrono::Duration::days(args.months as i64 * 30);
-    let year_boundary = today - chrono::Duration::days(args.years as i64 * 365);
+    let day_boundary = today - chrono::Duration::days(config.days as i64);
+    let week_boundary = today - chrono::Duration::weeks(config.weeks as i64);
+    let month_boundary = today - chrono::Duration::days(config.months as i64 * 30);
+    let year_boundary = today - chrono::Duration::days(config.years as i64 * 365);
 
     // Iterate through files (already sorted newest first)
     for (i, file) in files.iter().enumerate() {
@@ -141,6 +165,11 @@ fn select_files_to_keep(files: &[FileInfo], args: &Args) -> HashSet<usize> {
     }
 
     keep_indices
+}
+
+fn select_files_to_keep(files: &[FileInfo], config: &RetentionConfig) -> HashSet<usize> {
+    let today = Local::now().date_naive();
+    select_files_to_keep_with_date(files, config, today)
 }
 
 fn move_to_trash(file: &Path, trash_dir: &Path, dry_run: bool) -> Result<()> {
@@ -192,7 +221,8 @@ fn main() -> Result<()> {
     }
 
     // Determine which files to keep
-    let keep_indices = select_files_to_keep(&files, &args);
+    let config = RetentionConfig::from(&args);
+    let keep_indices = select_files_to_keep(&files, &config);
     println!(
         "Keeping {} files, moving {} to trash",
         keep_indices.len(),
@@ -215,4 +245,280 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{TimeZone, NaiveDate};
+
+    fn make_file_info(name: &str, date: NaiveDate) -> FileInfo {
+        let datetime = Local.from_local_datetime(&date.and_hms_opt(12, 0, 0).unwrap())
+            .single()
+            .unwrap();
+        FileInfo {
+            path: PathBuf::from(name),
+            created: datetime,
+        }
+    }
+
+    fn default_config() -> RetentionConfig {
+        RetentionConfig {
+            latest: 10,
+            days: 10,
+            weeks: 4,
+            months: 12,
+            years: 10,
+        }
+    }
+
+    #[test]
+    fn test_get_week_key() {
+        let date = NaiveDate::from_ymd_opt(2024, 1, 15).unwrap();
+        let (year, week) = get_week_key(date);
+        assert_eq!(year, 2024);
+        assert!(week >= 1 && week <= 53);
+    }
+
+    #[test]
+    fn test_get_month_key() {
+        let date = NaiveDate::from_ymd_opt(2024, 6, 15).unwrap();
+        assert_eq!(get_month_key(date), (2024, 6));
+    }
+
+    #[test]
+    fn test_get_year_key() {
+        let date = NaiveDate::from_ymd_opt(2024, 6, 15).unwrap();
+        assert_eq!(get_year_key(date), 2024);
+    }
+
+    #[test]
+    fn test_keep_latest_n_files() {
+        let today = NaiveDate::from_ymd_opt(2024, 6, 15).unwrap();
+        let config = RetentionConfig {
+            latest: 3,
+            days: 0,
+            weeks: 0,
+            months: 0,
+            years: 0,
+        };
+
+        // Create 5 files, all on the same day (so only latest N applies)
+        let files: Vec<FileInfo> = (0..5)
+            .map(|i| {
+                let datetime = Local.from_local_datetime(
+                    &today.and_hms_opt(12, i, 0).unwrap()
+                ).single().unwrap();
+                FileInfo {
+                    path: PathBuf::from(format!("file{}.txt", i)),
+                    created: datetime,
+                }
+            })
+            .rev() // newest first
+            .collect();
+
+        let keep = select_files_to_keep_with_date(&files, &config, today);
+        assert_eq!(keep.len(), 3);
+        assert!(keep.contains(&0));
+        assert!(keep.contains(&1));
+        assert!(keep.contains(&2));
+    }
+
+    #[test]
+    fn test_keep_one_per_day() {
+        let today = NaiveDate::from_ymd_opt(2024, 6, 15).unwrap();
+        let config = RetentionConfig {
+            latest: 0,
+            days: 5,
+            weeks: 0,
+            months: 0,
+            years: 0,
+        };
+
+        // Create files for 3 different days within range
+        let files = vec![
+            make_file_info("file1.txt", today),
+            make_file_info("file2.txt", today - chrono::Duration::days(1)),
+            make_file_info("file3.txt", today - chrono::Duration::days(2)),
+            make_file_info("file4.txt", today - chrono::Duration::days(2)), // duplicate day
+        ];
+
+        let keep = select_files_to_keep_with_date(&files, &config, today);
+        // Should keep 3 files (one per unique day), file4 is duplicate
+        assert_eq!(keep.len(), 3);
+        assert!(keep.contains(&0)); // today
+        assert!(keep.contains(&1)); // yesterday
+        assert!(keep.contains(&2)); // 2 days ago (first one)
+        assert!(!keep.contains(&3)); // duplicate day, not kept
+    }
+
+    #[test]
+    fn test_keep_one_per_week() {
+        let today = NaiveDate::from_ymd_opt(2024, 6, 15).unwrap(); // Saturday
+        let config = RetentionConfig {
+            latest: 0,
+            days: 0,
+            weeks: 4,
+            months: 0,
+            years: 0,
+        };
+
+        // Create files spanning 3 weeks
+        let files = vec![
+            make_file_info("file1.txt", today),
+            make_file_info("file2.txt", today - chrono::Duration::weeks(1)),
+            make_file_info("file3.txt", today - chrono::Duration::weeks(2)),
+            make_file_info("file4.txt", today - chrono::Duration::weeks(2) + chrono::Duration::days(1)), // same week as file3
+        ];
+
+        let keep = select_files_to_keep_with_date(&files, &config, today);
+        assert_eq!(keep.len(), 3);
+    }
+
+    #[test]
+    fn test_keep_one_per_month() {
+        let today = NaiveDate::from_ymd_opt(2024, 6, 15).unwrap();
+        let config = RetentionConfig {
+            latest: 0,
+            days: 0,
+            weeks: 0,
+            months: 6,
+            years: 0,
+        };
+
+        // Create files in different months
+        let files = vec![
+            make_file_info("file1.txt", NaiveDate::from_ymd_opt(2024, 6, 15).unwrap()),
+            make_file_info("file2.txt", NaiveDate::from_ymd_opt(2024, 5, 10).unwrap()),
+            make_file_info("file3.txt", NaiveDate::from_ymd_opt(2024, 5, 5).unwrap()), // same month as file2
+            make_file_info("file4.txt", NaiveDate::from_ymd_opt(2024, 4, 20).unwrap()),
+        ];
+
+        let keep = select_files_to_keep_with_date(&files, &config, today);
+        assert_eq!(keep.len(), 3); // June, May (first one), April
+        assert!(keep.contains(&0));
+        assert!(keep.contains(&1));
+        assert!(!keep.contains(&2)); // duplicate month
+        assert!(keep.contains(&3));
+    }
+
+    #[test]
+    fn test_keep_one_per_year() {
+        let today = NaiveDate::from_ymd_opt(2024, 6, 15).unwrap();
+        let config = RetentionConfig {
+            latest: 0,
+            days: 0,
+            weeks: 0,
+            months: 0,
+            years: 5,
+        };
+
+        // Create files in different years
+        let files = vec![
+            make_file_info("file1.txt", NaiveDate::from_ymd_opt(2024, 6, 15).unwrap()),
+            make_file_info("file2.txt", NaiveDate::from_ymd_opt(2023, 3, 10).unwrap()),
+            make_file_info("file3.txt", NaiveDate::from_ymd_opt(2023, 1, 5).unwrap()), // same year as file2
+            make_file_info("file4.txt", NaiveDate::from_ymd_opt(2022, 12, 20).unwrap()),
+        ];
+
+        let keep = select_files_to_keep_with_date(&files, &config, today);
+        assert_eq!(keep.len(), 3); // 2024, 2023 (first one), 2022
+        assert!(keep.contains(&0));
+        assert!(keep.contains(&1));
+        assert!(!keep.contains(&2)); // duplicate year
+        assert!(keep.contains(&3));
+    }
+
+    #[test]
+    fn test_empty_files() {
+        let today = NaiveDate::from_ymd_opt(2024, 6, 15).unwrap();
+        let config = default_config();
+        let files: Vec<FileInfo> = vec![];
+
+        let keep = select_files_to_keep_with_date(&files, &config, today);
+        assert!(keep.is_empty());
+    }
+
+    #[test]
+    fn test_files_outside_retention_window() {
+        let today = NaiveDate::from_ymd_opt(2024, 6, 15).unwrap();
+        let config = RetentionConfig {
+            latest: 0,
+            days: 5,
+            weeks: 0,
+            months: 0,
+            years: 0,
+        };
+
+        // File is 10 days old, outside the 5-day window
+        let files = vec![
+            make_file_info("old_file.txt", today - chrono::Duration::days(10)),
+        ];
+
+        let keep = select_files_to_keep_with_date(&files, &config, today);
+        assert!(keep.is_empty());
+    }
+
+    #[test]
+    fn test_combined_retention_policies() {
+        let today = NaiveDate::from_ymd_opt(2024, 6, 15).unwrap();
+        let config = RetentionConfig {
+            latest: 2,
+            days: 3,
+            weeks: 2,
+            months: 2,
+            years: 1,
+        };
+
+        let files = vec![
+            make_file_info("file1.txt", today),                                    // kept by latest + day + week + month + year
+            make_file_info("file2.txt", today - chrono::Duration::days(1)),        // kept by latest + day
+            make_file_info("file3.txt", today - chrono::Duration::days(2)),        // kept by day
+            make_file_info("file4.txt", today - chrono::Duration::days(10)),       // kept by week
+            make_file_info("file5.txt", today - chrono::Duration::days(40)),       // kept by month
+        ];
+
+        let keep = select_files_to_keep_with_date(&files, &config, today);
+        assert_eq!(keep.len(), 5); // All files should be kept by various policies
+    }
+
+    #[test]
+    fn test_latest_more_than_files() {
+        let today = NaiveDate::from_ymd_opt(2024, 6, 15).unwrap();
+        let config = RetentionConfig {
+            latest: 100, // More than available files
+            days: 0,
+            weeks: 0,
+            months: 0,
+            years: 0,
+        };
+
+        let files = vec![
+            make_file_info("file1.txt", today),
+            make_file_info("file2.txt", today - chrono::Duration::days(1)),
+        ];
+
+        let keep = select_files_to_keep_with_date(&files, &config, today);
+        assert_eq!(keep.len(), 2); // Should keep all files
+    }
+
+    #[test]
+    fn test_retention_config_from_args() {
+        let args = Args {
+            directory: PathBuf::from("/tmp"),
+            latest: 5,
+            days: 7,
+            weeks: 3,
+            months: 6,
+            years: 2,
+            dry_run: false,
+        };
+
+        let config = RetentionConfig::from(&args);
+        assert_eq!(config.latest, 5);
+        assert_eq!(config.days, 7);
+        assert_eq!(config.weeks, 3);
+        assert_eq!(config.months, 6);
+        assert_eq!(config.years, 2);
+    }
 }

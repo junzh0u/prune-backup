@@ -1,10 +1,22 @@
 Create a rust project for a CLI tool, named `rotate`.
-It accepts an directory as param, and scan all files under the directory and read their creation dates.
-Based on creations date, it preserves:
-* Lastest N files
-* Plus 1 file per day for D days.
-* Plus 1 file per week for W days.
-* Plus 1 file per month for M months.
-* Plus 1 file per year for Y years.
+It accepts a directory as param, scan all files under the directory and read their creation dates.
+The following retention options are available:
+
+* keep-last <N>
+Keep the last <N> backups.
+* keep-hourly <N>
+Keep backups for the last <N> hours. If there is more than one backup for a single hour, only the latest is kept.
+* keep-daily <N>
+Keep backups for the last <N> days. If there is more than one backup for a single day, only the latest is kept.
+* keep-weekly <N>
+Keep backups for the last <N> weeks. If there is more than one backup for a single week, only the latest is kept.
+Note that weeks start on Monday and end on Sunday. The software uses the ISO week date-system and handles weeks at the end of the year correctly.
+* keep-monthly <N>
+Keep backups for the last <N> months. If there is more than one backup for a single month, only the latest is kept.
+* keep-yearly <N>
+Keep backups for the last <N> years. If there is more than one backup for a single year, only the latest is kept.
+
 And move all other files to trash can, which is `.trash` directory under the working directory.
-Default D=10, W=4, M=12, Y=10. But make it overridable via CLI flags.
+
+Default options are:
+keep-last=5, keep-hourly=24, keep-daily=7, keep-weekly=4, keep-monthly=12, keep-yearly=10
