@@ -5,7 +5,9 @@ use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(name = "prune-backup")]
-#[command(about = "Prune backup files based on creation date, keeping recent files and moving old ones to trash")]
+#[command(
+    about = "Prune backup files based on creation date, keeping recent files and moving old ones to trash"
+)]
 struct Args {
     /// Directory to scan for files
     directory: PathBuf,
@@ -57,18 +59,18 @@ fn main() -> Result<()> {
 
     // Validate directory exists
     if !args.directory.is_dir() {
-        anyhow::bail!("Directory does not exist: {:?}", args.directory);
+        anyhow::bail!("Directory does not exist: {}", args.directory.display());
     }
 
     let config = RetentionConfig::from(&args);
-    println!("Scanning {:?}...", args.directory);
+    println!("Scanning {}...", args.directory.display());
 
     let (kept, moved) = rotate_files(&args.directory, &config, args.dry_run)?;
 
     if args.dry_run {
-        println!("Dry run complete. Would keep {} files, move {} to trash.", kept, moved);
+        println!("Dry run complete. Would keep {kept} files, move {moved} to trash.");
     } else {
-        println!("Done. Kept {} files, moved {} to trash.", kept, moved);
+        println!("Done. Kept {kept} files, moved {moved} to trash.");
     }
 
     Ok(())

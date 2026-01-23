@@ -9,11 +9,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build and Test Commands
 
 ```bash
-# Build
-cargo build
+# Run all checks (fmt, clippy, test)
+make all
 
-# Run tests (unit + integration)
-cargo test
+# Individual commands
+make fmt      # Check formatting
+make clippy   # Lint with pedantic warnings
+make test     # Run tests
+make install  # Install binary
 
 # Run a specific test
 cargo test test_name

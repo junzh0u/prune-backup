@@ -1,3 +1,5 @@
+#![allow(clippy::missing_errors_doc)]
+
 use anyhow::{Context, Result};
 use chrono::{DateTime, Datelike, Local, NaiveDate, Timelike};
 use std::collections::HashSet;
@@ -50,13 +52,17 @@ pub fn scan_files(dir: &Path) -> Result<Vec<FileInfo>> {
         let path = entry.path();
 
         // Skip directories and hidden files
-        if path.is_dir() || path.file_name().map_or(false, |n| n.to_string_lossy().starts_with('.')) {
+        if path.is_dir()
+            || path
+                .file_name()
+                .is_some_and(|n| n.to_string_lossy().starts_with('.'))
+        {
             continue;
         }
 
         match get_file_creation_time(&path) {
             Ok(created) => files.push(FileInfo { path, created }),
-            Err(e) => eprintln!("Warning: Skipping {:?}: {}", path, e),
+            Err(e) => eprintln!("Warning: Skipping {}: {e}", path.display()),
         }
     }
 
@@ -83,6 +89,7 @@ fn get_year_key(date: NaiveDate) -> i32 {
     date.year()
 }
 
+#[must_use]
 pub fn select_files_to_keep_with_datetime(
     files: &[FileInfo],
     config: &RetentionConfig,
@@ -99,7 +106,7 @@ pub fn select_files_to_keep_with_datetime(
     // 2. Keep 1 file per hour for N hours
     // Only consider files not already kept by previous policies
     if config.keep_hourly > 0 {
-        let hour_boundary = now - chrono::Duration::hours(config.keep_hourly as i64);
+        let hour_boundary = now - chrono::Duration::hours(i64::from(config.keep_hourly));
         let mut covered_hours: HashSet<(i32, u32, u32, u32)> = HashSet::new();
         for (i, file) in files.iter().enumerate() {
             if keep_indices.contains(&i) {
@@ -117,7 +124,7 @@ pub fn select_files_to_keep_with_datetime(
     // 3. Keep 1 file per day for N days
     // Only consider files not already kept by previous policies
     if config.keep_daily > 0 {
-        let day_boundary = today - chrono::Duration::days(config.keep_daily as i64);
+        let day_boundary = today - chrono::Duration::days(i64::from(config.keep_daily));
         let mut covered_days: HashSet<NaiveDate> = HashSet::new();
         for (i, file) in files.iter().enumerate() {
             if keep_indices.contains(&i) {
@@ -134,7 +141,7 @@ pub fn select_files_to_keep_with_datetime(
     // 4. Keep 1 file per week for N weeks (ISO week system)
     // Only consider files not already kept by previous policies
     if config.keep_weekly > 0 {
-        let week_boundary = today - chrono::Duration::weeks(config.keep_weekly as i64);
+        let week_boundary = today - chrono::Duration::weeks(i64::from(config.keep_weekly));
         let mut covered_weeks: HashSet<(i32, u32)> = HashSet::new();
         for (i, file) in files.iter().enumerate() {
             if keep_indices.contains(&i) {
@@ -152,7 +159,7 @@ pub fn select_files_to_keep_with_datetime(
     // 5. Keep 1 file per month for N months
     // Only consider files not already kept by previous policies
     if config.keep_monthly > 0 {
-        let month_boundary = today - chrono::Duration::days(config.keep_monthly as i64 * 30);
+        let month_boundary = today - chrono::Duration::days(i64::from(config.keep_monthly) * 30);
         let mut covered_months: HashSet<(i32, u32)> = HashSet::new();
         for (i, file) in files.iter().enumerate() {
             if keep_indices.contains(&i) {
@@ -170,7 +177,7 @@ pub fn select_files_to_keep_with_datetime(
     // 6. Keep 1 file per year for N years
     // Only consider files not already kept by previous policies
     if config.keep_yearly > 0 {
-        let year_boundary = today - chrono::Duration::days(config.keep_yearly as i64 * 365);
+        let year_boundary = today - chrono::Duration::days(i64::from(config.keep_yearly) * 365);
         let mut covered_years: HashSet<i32> = HashSet::new();
         for (i, file) in files.iter().enumerate() {
             if keep_indices.contains(&i) {
@@ -188,31 +195,33 @@ pub fn select_files_to_keep_with_datetime(
     keep_indices
 }
 
+#[must_use]
 pub fn select_files_to_keep(files: &[FileInfo], config: &RetentionConfig) -> HashSet<usize> {
     let now = Local::now();
     select_files_to_keep_with_datetime(files, config, now)
 }
 
 pub fn move_to_trash(file: &Path, trash_dir: &Path, dry_run: bool) -> Result<()> {
-    let file_name = file
-        .file_name()
-        .context("Failed to get file name")?;
+    let file_name = file.file_name().context("Failed to get file name")?;
     let dest = trash_dir.join(file_name);
 
     if dry_run {
-        println!("Would move: {:?} -> {:?}", file, dest);
+        println!("Would move: {} -> {}", file.display(), dest.display());
     } else {
         // Handle name conflicts by appending a number
         let mut final_dest = dest.clone();
         let mut counter = 1;
         while final_dest.exists() {
             let stem = dest.file_stem().unwrap_or_default().to_string_lossy();
-            let ext = dest.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
-            final_dest = trash_dir.join(format!("{}_{}{}", stem, counter, ext));
+            let ext = dest
+                .extension()
+                .map(|e| format!(".{}", e.to_string_lossy()))
+                .unwrap_or_default();
+            final_dest = trash_dir.join(format!("{stem}_{counter}{ext}"));
             counter += 1;
         }
         fs::rename(file, &final_dest).context("Failed to move file to trash")?;
-        println!("Moved: {:?} -> {:?}", file, final_dest);
+        println!("Moved: {} -> {}", file.display(), final_dest.display());
     }
 
     Ok(())
@@ -260,7 +269,8 @@ mod tests {
     }
 
     fn make_file_info(name: &str, date: NaiveDate) -> FileInfo {
-        let datetime = Local.from_local_datetime(&date.and_hms_opt(12, 0, 0).unwrap())
+        let datetime = Local
+            .from_local_datetime(&date.and_hms_opt(12, 0, 0).unwrap())
             .single()
             .unwrap();
         FileInfo {
@@ -356,7 +366,10 @@ mod tests {
             make_file_info_with_time("file1.txt", now),
             make_file_info_with_time("file2.txt", now - chrono::Duration::hours(1)),
             make_file_info_with_time("file3.txt", now - chrono::Duration::hours(2)),
-            make_file_info_with_time("file4.txt", now - chrono::Duration::hours(2) + chrono::Duration::minutes(30)), // same hour as file3
+            make_file_info_with_time(
+                "file4.txt",
+                now - chrono::Duration::hours(2) + chrono::Duration::minutes(30),
+            ), // same hour as file3
         ];
 
         let keep = select_files_to_keep_with_datetime(&files, &config, now);
@@ -406,7 +419,10 @@ mod tests {
             make_file_info("file1.txt", today),
             make_file_info("file2.txt", today - chrono::Duration::weeks(1)),
             make_file_info("file3.txt", today - chrono::Duration::weeks(2)),
-            make_file_info("file4.txt", today - chrono::Duration::weeks(2) + chrono::Duration::days(1)), // same week as file3
+            make_file_info(
+                "file4.txt",
+                today - chrono::Duration::weeks(2) + chrono::Duration::days(1),
+            ), // same week as file3
         ];
 
         let keep = select_files_to_keep_with_datetime(&files, &config, now);
@@ -480,9 +496,10 @@ mod tests {
         };
 
         // File is 10 days old, outside the 5-day window
-        let files = vec![
-            make_file_info("old_file.txt", now.date_naive() - chrono::Duration::days(10)),
-        ];
+        let files = vec![make_file_info(
+            "old_file.txt",
+            now.date_naive() - chrono::Duration::days(10),
+        )];
 
         let keep = select_files_to_keep_with_datetime(&files, &config, now);
         assert!(keep.is_empty());
