@@ -1,8 +1,39 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Datelike, Local, NaiveDate, Timelike};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+/// Reason why a file was kept by the retention policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RetentionReason {
+    /// Kept as one of the last N files
+    KeepLast,
+    /// Kept as the representative for an hour
+    Hourly,
+    /// Kept as the representative for a day
+    Daily,
+    /// Kept as the representative for a week
+    Weekly,
+    /// Kept as the representative for a month
+    Monthly,
+    /// Kept as the representative for a year
+    Yearly,
+}
+
+impl fmt::Display for RetentionReason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::KeepLast => write!(f, "keep-last"),
+            Self::Hourly => write!(f, "hourly"),
+            Self::Daily => write!(f, "daily"),
+            Self::Weekly => write!(f, "weekly"),
+            Self::Monthly => write!(f, "monthly"),
+            Self::Yearly => write!(f, "yearly"),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct FileInfo {
@@ -98,18 +129,19 @@ fn get_year_key(date: NaiveDate) -> i32 {
     date.year()
 }
 
+/// Selects files to keep with reasons, using a specific datetime as "now".
 #[must_use]
-pub fn select_files_to_keep_with_datetime(
+pub fn select_files_to_keep_with_reasons(
     files: &[FileInfo],
     config: &RetentionConfig,
     now: DateTime<Local>,
-) -> HashSet<usize> {
-    let mut keep_indices: HashSet<usize> = HashSet::new();
+) -> HashMap<usize, RetentionReason> {
+    let mut keep_reasons: HashMap<usize, RetentionReason> = HashMap::new();
     let today = now.date_naive();
 
     // 1. Keep last N files (processed first)
     for i in 0..config.keep_last.min(files.len()) {
-        keep_indices.insert(i);
+        keep_reasons.insert(i, RetentionReason::KeepLast);
     }
 
     // 2. Keep 1 file per hour for N hours
@@ -118,14 +150,14 @@ pub fn select_files_to_keep_with_datetime(
         let hour_boundary = now - chrono::Duration::hours(i64::from(config.keep_hourly));
         let mut covered_hours: HashSet<(i32, u32, u32, u32)> = HashSet::new();
         for (i, file) in files.iter().enumerate() {
-            if keep_indices.contains(&i) {
+            if keep_reasons.contains_key(&i) {
                 continue; // Skip files already kept by earlier policies
             }
             let file_datetime = file.created;
             let hour_key = get_hour_key(file_datetime);
             if file_datetime >= hour_boundary && !covered_hours.contains(&hour_key) {
                 covered_hours.insert(hour_key);
-                keep_indices.insert(i);
+                keep_reasons.insert(i, RetentionReason::Hourly);
             }
         }
     }
@@ -136,13 +168,13 @@ pub fn select_files_to_keep_with_datetime(
         let day_boundary = today - chrono::Duration::days(i64::from(config.keep_daily));
         let mut covered_days: HashSet<NaiveDate> = HashSet::new();
         for (i, file) in files.iter().enumerate() {
-            if keep_indices.contains(&i) {
+            if keep_reasons.contains_key(&i) {
                 continue; // Skip files already kept by earlier policies
             }
             let file_date = file.created.date_naive();
             if file_date >= day_boundary && !covered_days.contains(&file_date) {
                 covered_days.insert(file_date);
-                keep_indices.insert(i);
+                keep_reasons.insert(i, RetentionReason::Daily);
             }
         }
     }
@@ -153,14 +185,14 @@ pub fn select_files_to_keep_with_datetime(
         let week_boundary = today - chrono::Duration::weeks(i64::from(config.keep_weekly));
         let mut covered_weeks: HashSet<(i32, u32)> = HashSet::new();
         for (i, file) in files.iter().enumerate() {
-            if keep_indices.contains(&i) {
+            if keep_reasons.contains_key(&i) {
                 continue; // Skip files already kept by earlier policies
             }
             let file_date = file.created.date_naive();
             let week_key = get_week_key(file_date);
             if file_date >= week_boundary && !covered_weeks.contains(&week_key) {
                 covered_weeks.insert(week_key);
-                keep_indices.insert(i);
+                keep_reasons.insert(i, RetentionReason::Weekly);
             }
         }
     }
@@ -171,14 +203,14 @@ pub fn select_files_to_keep_with_datetime(
         let month_boundary = today - chrono::Duration::days(i64::from(config.keep_monthly) * 30);
         let mut covered_months: HashSet<(i32, u32)> = HashSet::new();
         for (i, file) in files.iter().enumerate() {
-            if keep_indices.contains(&i) {
+            if keep_reasons.contains_key(&i) {
                 continue; // Skip files already kept by earlier policies
             }
             let file_date = file.created.date_naive();
             let month_key = get_month_key(file_date);
             if file_date >= month_boundary && !covered_months.contains(&month_key) {
                 covered_months.insert(month_key);
-                keep_indices.insert(i);
+                keep_reasons.insert(i, RetentionReason::Monthly);
             }
         }
     }
@@ -189,19 +221,30 @@ pub fn select_files_to_keep_with_datetime(
         let year_boundary = today - chrono::Duration::days(i64::from(config.keep_yearly) * 365);
         let mut covered_years: HashSet<i32> = HashSet::new();
         for (i, file) in files.iter().enumerate() {
-            if keep_indices.contains(&i) {
+            if keep_reasons.contains_key(&i) {
                 continue; // Skip files already kept by earlier policies
             }
             let file_date = file.created.date_naive();
             let year_key = get_year_key(file_date);
             if file_date >= year_boundary && !covered_years.contains(&year_key) {
                 covered_years.insert(year_key);
-                keep_indices.insert(i);
+                keep_reasons.insert(i, RetentionReason::Yearly);
             }
         }
     }
 
-    keep_indices
+    keep_reasons
+}
+
+#[must_use]
+pub fn select_files_to_keep_with_datetime(
+    files: &[FileInfo],
+    config: &RetentionConfig,
+    now: DateTime<Local>,
+) -> HashSet<usize> {
+    select_files_to_keep_with_reasons(files, config, now)
+        .into_keys()
+        .collect()
 }
 
 #[must_use]
@@ -258,19 +301,28 @@ pub fn rotate_files(dir: &Path, config: &RetentionConfig, dry_run: bool) -> Resu
         return Ok((0, 0));
     }
 
-    // Determine which files to keep
-    let keep_indices = select_files_to_keep(&files, config);
+    // Determine which files to keep and why
+    let now = Local::now();
+    let keep_reasons = select_files_to_keep_with_reasons(&files, config, now);
+
+    // Print kept files with reasons
+    for (i, file) in files.iter().enumerate() {
+        if let Some(reason) = keep_reasons.get(&i) {
+            let prefix = if dry_run { "Would keep" } else { "Keeping" };
+            println!("{prefix}: {} ({reason})", file.path.display());
+        }
+    }
 
     // Move files that are not in keep set
     let mut moved_count = 0;
     for (i, file) in files.iter().enumerate() {
-        if !keep_indices.contains(&i) {
+        if !keep_reasons.contains_key(&i) {
             move_to_trash(&file.path, &trash_dir, dry_run)?;
             moved_count += 1;
         }
     }
 
-    Ok((keep_indices.len(), moved_count))
+    Ok((keep_reasons.len(), moved_count))
 }
 
 #[cfg(test)]
