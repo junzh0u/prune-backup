@@ -2,6 +2,9 @@
 name = "prune-backup"
 version = "0.1.0"
 edition = "2021"
+description = "Prune backup files based on retention policies, keeping recent files and moving old ones to trash"
+license = "MIT"
+repository = "https://github.com/junzh0u/prune-backup"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
