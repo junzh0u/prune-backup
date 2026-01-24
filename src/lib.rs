@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Datelike, Local, NaiveDate, Timelike};
+use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs;
@@ -61,6 +62,86 @@ impl Default for RetentionConfig {
             keep_monthly: 12,
             keep_yearly: 10,
         }
+    }
+}
+
+/// Configuration read from a `.retention` file in TOML format.
+/// All fields are optional; missing fields will use CLI args or defaults.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct RetentionFileConfig {
+    pub keep_last: Option<usize>,
+    pub keep_hourly: Option<u32>,
+    pub keep_daily: Option<u32>,
+    pub keep_weekly: Option<u32>,
+    pub keep_monthly: Option<u32>,
+    pub keep_yearly: Option<u32>,
+}
+
+/// The name of the retention configuration file.
+pub const RETENTION_FILE_NAME: &str = ".retention";
+
+/// Reads a `.retention` file from the given directory.
+///
+/// # Returns
+/// - `Ok(Some(config))` if the file exists and was parsed successfully
+/// - `Ok(None)` if the file does not exist
+///
+/// # Errors
+/// Returns an error if the file exists but cannot be read or parsed as valid TOML.
+pub fn read_retention_file(dir: &Path) -> Result<Option<RetentionFileConfig>> {
+    let file_path = dir.join(RETENTION_FILE_NAME);
+
+    if !file_path.exists() {
+        return Ok(None);
+    }
+
+    let contents = fs::read_to_string(&file_path)
+        .with_context(|| format!("Failed to read {}", file_path.display()))?;
+
+    let config: RetentionFileConfig = toml::from_str(&contents)
+        .with_context(|| format!("Failed to parse {} as TOML", file_path.display()))?;
+
+    Ok(Some(config))
+}
+
+/// Resolves the final retention configuration from CLI args and file config.
+///
+/// Priority (highest to lowest):
+/// 1. CLI argument (if provided by user)
+/// 2. File config value (if present in .retention file)
+/// 3. Built-in default
+#[must_use]
+pub fn resolve_config(
+    cli_keep_last: Option<usize>,
+    cli_keep_hourly: Option<u32>,
+    cli_keep_daily: Option<u32>,
+    cli_keep_weekly: Option<u32>,
+    cli_keep_monthly: Option<u32>,
+    cli_keep_yearly: Option<u32>,
+    file_config: Option<&RetentionFileConfig>,
+) -> RetentionConfig {
+    let defaults = RetentionConfig::default();
+
+    RetentionConfig {
+        keep_last: cli_keep_last
+            .or_else(|| file_config.and_then(|f| f.keep_last))
+            .unwrap_or(defaults.keep_last),
+        keep_hourly: cli_keep_hourly
+            .or_else(|| file_config.and_then(|f| f.keep_hourly))
+            .unwrap_or(defaults.keep_hourly),
+        keep_daily: cli_keep_daily
+            .or_else(|| file_config.and_then(|f| f.keep_daily))
+            .unwrap_or(defaults.keep_daily),
+        keep_weekly: cli_keep_weekly
+            .or_else(|| file_config.and_then(|f| f.keep_weekly))
+            .unwrap_or(defaults.keep_weekly),
+        keep_monthly: cli_keep_monthly
+            .or_else(|| file_config.and_then(|f| f.keep_monthly))
+            .unwrap_or(defaults.keep_monthly),
+        keep_yearly: cli_keep_yearly
+            .or_else(|| file_config.and_then(|f| f.keep_yearly))
+            .unwrap_or(defaults.keep_yearly),
     }
 }
 
@@ -800,5 +881,153 @@ mod tests {
         assert!(keep.contains(&2)); // daily (oldest uncovered for today)
         assert!(!keep.contains(&1)); // today already covered by index 2
         assert!(keep.contains(&3)); // daily (yesterday)
+    }
+
+    // ==================== RETENTION FILE CONFIG TESTS ====================
+
+    #[test]
+    fn test_resolve_config_all_defaults() {
+        // No CLI args, no file config -> all defaults
+        let config = resolve_config(None, None, None, None, None, None, None);
+        assert_eq!(config, RetentionConfig::default());
+    }
+
+    #[test]
+    fn test_resolve_config_file_values() {
+        // File config values should be used when no CLI args
+        let file_config = RetentionFileConfig {
+            keep_last: Some(10),
+            keep_hourly: Some(48),
+            keep_daily: None,
+            keep_weekly: Some(8),
+            keep_monthly: None,
+            keep_yearly: Some(5),
+        };
+
+        let config = resolve_config(None, None, None, None, None, None, Some(&file_config));
+
+        assert_eq!(config.keep_last, 10);
+        assert_eq!(config.keep_hourly, 48);
+        assert_eq!(config.keep_daily, 7); // default
+        assert_eq!(config.keep_weekly, 8);
+        assert_eq!(config.keep_monthly, 12); // default
+        assert_eq!(config.keep_yearly, 5);
+    }
+
+    #[test]
+    fn test_resolve_config_cli_overrides_file() {
+        // CLI args should override file config
+        let file_config = RetentionFileConfig {
+            keep_last: Some(10),
+            keep_hourly: Some(48),
+            keep_daily: Some(14),
+            keep_weekly: Some(8),
+            keep_monthly: Some(24),
+            keep_yearly: Some(5),
+        };
+
+        let config = resolve_config(
+            Some(3),  // CLI override
+            None,     // use file
+            Some(30), // CLI override
+            None,     // use file
+            None,     // use file
+            Some(2),  // CLI override
+            Some(&file_config),
+        );
+
+        assert_eq!(config.keep_last, 3); // CLI
+        assert_eq!(config.keep_hourly, 48); // file
+        assert_eq!(config.keep_daily, 30); // CLI
+        assert_eq!(config.keep_weekly, 8); // file
+        assert_eq!(config.keep_monthly, 24); // file
+        assert_eq!(config.keep_yearly, 2); // CLI
+    }
+
+    #[test]
+    fn test_resolve_config_cli_only() {
+        // CLI args with no file config
+        let config = resolve_config(Some(1), Some(12), Some(3), Some(2), Some(6), Some(3), None);
+
+        assert_eq!(config.keep_last, 1);
+        assert_eq!(config.keep_hourly, 12);
+        assert_eq!(config.keep_daily, 3);
+        assert_eq!(config.keep_weekly, 2);
+        assert_eq!(config.keep_monthly, 6);
+        assert_eq!(config.keep_yearly, 3);
+    }
+
+    #[test]
+    fn test_retention_file_config_parse_toml() {
+        let toml_content = r#"
+keep-last = 10
+keep-hourly = 48
+keep-daily = 14
+"#;
+        let config: RetentionFileConfig = toml::from_str(toml_content).unwrap();
+
+        assert_eq!(config.keep_last, Some(10));
+        assert_eq!(config.keep_hourly, Some(48));
+        assert_eq!(config.keep_daily, Some(14));
+        assert_eq!(config.keep_weekly, None);
+        assert_eq!(config.keep_monthly, None);
+        assert_eq!(config.keep_yearly, None);
+    }
+
+    #[test]
+    fn test_retention_file_config_empty_toml() {
+        let toml_content = "";
+        let config: RetentionFileConfig = toml::from_str(toml_content).unwrap();
+
+        assert_eq!(config.keep_last, None);
+        assert_eq!(config.keep_hourly, None);
+    }
+
+    #[test]
+    fn test_read_retention_file_not_exists() {
+        let dir = std::env::temp_dir().join("prune_backup_test_no_file");
+        let _ = std::fs::create_dir(&dir);
+        // Ensure no .retention file exists
+        let _ = std::fs::remove_file(dir.join(RETENTION_FILE_NAME));
+
+        let result = read_retention_file(&dir);
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn test_read_retention_file_exists() {
+        let dir = std::env::temp_dir().join("prune_backup_test_with_file");
+        let _ = std::fs::create_dir_all(&dir);
+
+        let file_path = dir.join(RETENTION_FILE_NAME);
+        std::fs::write(&file_path, "keep-last = 3\nkeep-daily = 10\n").unwrap();
+
+        let result = read_retention_file(&dir);
+        assert!(result.is_ok());
+        let config = result.unwrap().unwrap();
+        assert_eq!(config.keep_last, Some(3));
+        assert_eq!(config.keep_daily, Some(10));
+        assert_eq!(config.keep_hourly, None);
+
+        let _ = std::fs::remove_file(&file_path);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn test_read_retention_file_invalid_toml() {
+        let dir = std::env::temp_dir().join("prune_backup_test_invalid");
+        let _ = std::fs::create_dir_all(&dir);
+
+        let file_path = dir.join(RETENTION_FILE_NAME);
+        std::fs::write(&file_path, "this is not valid toml {{{{").unwrap();
+
+        let result = read_retention_file(&dir);
+        assert!(result.is_err());
+
+        let _ = std::fs::remove_file(&file_path);
+        let _ = std::fs::remove_dir(&dir);
     }
 }
