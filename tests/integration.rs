@@ -146,15 +146,17 @@ fn test_rotate_daily_with_real_files() {
     let day_secs = 86400;
 
     // Create files on different days
+    // Use small offset (60s) for same-day files to avoid midnight edge cases
+    // Use 1.5 day offsets to ensure files are clearly on different calendar days
     create_file_with_age(dir, "day0.txt", 0); // today
-    create_file_with_age(dir, "day0_b.txt", 3600); // also today
-    create_file_with_age(dir, "day1.txt", day_secs); // yesterday
-    create_file_with_age(dir, "day2.txt", day_secs * 2); // 2 days ago
+    create_file_with_age(dir, "day0_b.txt", 60); // also today (1 min ago, definitely same day)
+    create_file_with_age(dir, "day1.txt", day_secs + day_secs / 2); // 1.5 days ago
+    create_file_with_age(dir, "day2.txt", day_secs * 2 + day_secs / 2); // 2.5 days ago
 
     let config = RetentionConfig {
         keep_last: 0,
         keep_hourly: 0,
-        keep_daily: 3,
+        keep_daily: 4, // increased to cover 2.5 days ago
         keep_weekly: 0,
         keep_monthly: 0,
         keep_yearly: 0,
