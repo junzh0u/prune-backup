@@ -1,0 +1,20 @@
+# Example retention configuration for prune-backup
+# Place this file as `.retention` in your backup directory
+
+# Keep the last N backups regardless of age (must be at least 1)
+keep-last = 5
+
+# Keep one backup per hour for the last N hours
+keep-hourly = 24
+
+# Keep one backup per day for the last N days
+keep-daily = 7
+
+# Keep one backup per week for the last N weeks (ISO week system)
+keep-weekly = 4
+
+# Keep one backup per month for the last N months
+keep-monthly = 12
+
+# Keep one backup per year for the last N years
+keep-yearly = 10
