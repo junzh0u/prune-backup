@@ -258,31 +258,16 @@ pub fn select_files_to_keep(files: &[FileInfo], config: &RetentionConfig) -> Has
     select_files_to_keep_with_datetime(files, config, now)
 }
 
-/// Moves a file to the trash directory.
+/// Moves a file to the system trash.
 ///
 /// # Errors
-/// Returns an error if the file cannot be moved or has no filename.
-pub fn move_to_trash(file: &Path, trash_dir: &Path, dry_run: bool) -> Result<()> {
-    let file_name = file.file_name().context("Failed to get file name")?;
-    let dest = trash_dir.join(file_name);
-
+/// Returns an error if the file cannot be moved to trash.
+pub fn move_to_trash(file: &Path, dry_run: bool) -> Result<()> {
     if dry_run {
-        println!("Would move: {} -> {}", file.display(), dest.display());
+        println!("Would move to trash: {}", file.display());
     } else {
-        // Handle name conflicts by appending a number
-        let mut final_dest = dest.clone();
-        let mut counter = 1;
-        while final_dest.exists() {
-            let stem = dest.file_stem().unwrap_or_default().to_string_lossy();
-            let ext = dest
-                .extension()
-                .map(|e| format!(".{}", e.to_string_lossy()))
-                .unwrap_or_default();
-            final_dest = trash_dir.join(format!("{stem}_{counter}{ext}"));
-            counter += 1;
-        }
-        fs::rename(file, &final_dest).context("Failed to move file to trash")?;
-        println!("Moved: {} -> {}", file.display(), final_dest.display());
+        trash::delete(file).context("Failed to move file to trash")?;
+        println!("Moved to trash: {}", file.display());
     }
 
     Ok(())
@@ -294,17 +279,10 @@ pub fn move_to_trash(file: &Path, trash_dir: &Path, dry_run: bool) -> Result<()>
 /// Returns an error if:
 /// - `keep_last` is 0 (must be at least 1)
 /// - The directory cannot be read
-/// - Trash directory cannot be created
-/// - Files cannot be moved
+/// - Files cannot be moved to trash
 pub fn rotate_files(dir: &Path, config: &RetentionConfig, dry_run: bool) -> Result<(usize, usize)> {
     if config.keep_last == 0 {
         anyhow::bail!("keep-last must be at least 1");
-    }
-
-    // Create trash directory
-    let trash_dir = dir.join(".trash");
-    if !dry_run && !trash_dir.exists() {
-        fs::create_dir(&trash_dir).context("Failed to create .trash directory")?;
     }
 
     // Scan files
@@ -326,11 +304,11 @@ pub fn rotate_files(dir: &Path, config: &RetentionConfig, dry_run: bool) -> Resu
         }
     }
 
-    // Move files that are not in keep set
+    // Move files that are not in keep set to system trash
     let mut moved_count = 0;
     for (i, file) in files.iter().enumerate() {
         if !keep_reasons.contains_key(&i) {
-            move_to_trash(&file.path, &trash_dir, dry_run)?;
+            move_to_trash(&file.path, dry_run)?;
             moved_count += 1;
         }
     }

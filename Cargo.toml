@@ -10,6 +10,7 @@ repository = "https://github.com/junzh0u/prune-backup"
 clap = { version = "4", features = ["derive"] }
 chrono = "0.4"
 anyhow = "1"
+trash = "5"
 
 [dev-dependencies]
 filetime = "0.2"

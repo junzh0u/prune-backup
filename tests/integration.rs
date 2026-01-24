@@ -18,11 +18,10 @@ fn file_exists(dir: &Path, name: &str) -> bool {
     dir.join(name).exists()
 }
 
-fn trash_exists(dir: &Path, name: &str) -> bool {
-    dir.join(".trash").join(name).exists()
-}
-
+/// This test requires a GUI environment (Finder on macOS) to move files to trash.
+/// Run with: cargo test -- --ignored
 #[test]
+#[ignore]
 fn test_rotate_keeps_recent_files() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let dir = temp_dir.path();
@@ -49,8 +48,7 @@ fn test_rotate_keeps_recent_files() {
     // Check files
     assert!(file_exists(dir, "file1.txt"));
     assert!(file_exists(dir, "file2.txt"));
-    assert!(!file_exists(dir, "file3.txt"));
-    assert!(trash_exists(dir, "file3.txt"));
+    assert!(!file_exists(dir, "file3.txt")); // moved to system trash
 }
 
 #[test]
@@ -78,33 +76,12 @@ fn test_rotate_dry_run_does_not_move_files() {
     // Both files should still exist (dry run)
     assert!(file_exists(dir, "file1.txt"));
     assert!(file_exists(dir, "file2.txt"));
-    // Trash dir should not exist
-    assert!(!dir.join(".trash").exists());
 }
 
+/// This test requires a GUI environment (Finder on macOS) to move files to trash.
+/// Run with: cargo test -- --ignored
 #[test]
-fn test_rotate_creates_trash_directory() {
-    let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let dir = temp_dir.path();
-
-    create_file_with_age(dir, "file1.txt", 0);
-    create_file_with_age(dir, "file2.txt", 60);
-
-    let config = RetentionConfig {
-        keep_last: 1,
-        keep_hourly: 0,
-        keep_daily: 0,
-        keep_weekly: 0,
-        keep_monthly: 0,
-        keep_yearly: 0,
-    };
-
-    rotate_files(dir, &config, false).expect("rotate_files failed");
-
-    assert!(dir.join(".trash").is_dir());
-}
-
-#[test]
+#[ignore]
 fn test_rotate_hourly_with_real_files() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let dir = temp_dir.path();
@@ -135,7 +112,7 @@ fn test_rotate_hourly_with_real_files() {
     assert!(file_exists(dir, "hour0.txt")); // kept by keep-last
     assert!(file_exists(dir, "hour1.txt")); // kept by hourly
     assert!(file_exists(dir, "hour2_b.txt")); // kept by hourly (oldest in hour 2)
-    assert!(trash_exists(dir, "hour2.txt")); // moved (newer duplicate)
+    assert!(!file_exists(dir, "hour2.txt")); // moved to system trash
 }
 
 #[test]
@@ -189,7 +166,10 @@ fn test_rotate_empty_directory() {
     assert_eq!(moved, 0);
 }
 
+/// This test requires a GUI environment (Finder on macOS) to move files to trash.
+/// Run with: cargo test -- --ignored
 #[test]
+#[ignore]
 fn test_rotate_skips_hidden_files() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let dir = temp_dir.path();
@@ -217,9 +197,8 @@ fn test_rotate_skips_hidden_files() {
     assert_eq!(moved, 1);
 
     assert!(file_exists(dir, "visible1.txt"));
-    assert!(!file_exists(dir, "visible2.txt"));
+    assert!(!file_exists(dir, "visible2.txt")); // moved to system trash
     assert!(file_exists(dir, ".hidden")); // hidden file still there
-    assert!(trash_exists(dir, "visible2.txt"));
 }
 
 #[test]
@@ -246,41 +225,6 @@ fn test_rotate_skips_directories() {
 
     assert!(file_exists(dir, "file.txt"));
     assert!(dir.join("subdir").is_dir()); // subdir still there
-}
-
-#[test]
-fn test_rotate_handles_name_conflicts_in_trash() {
-    let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let dir = temp_dir.path();
-
-    // Create trash with existing file
-    fs::create_dir(dir.join(".trash")).expect("Failed to create trash dir");
-    File::create(dir.join(".trash").join("older.txt")).expect("Failed to create file in trash");
-
-    // Create two files - one will be kept by keep_last, one will be moved
-    create_file_with_age(dir, "newer.txt", 0); // kept by keep_last
-    create_file_with_age(dir, "older.txt", 60); // moved to trash (conflicts with existing)
-
-    let config = RetentionConfig {
-        keep_last: 1,
-        keep_hourly: 0,
-        keep_daily: 0,
-        keep_weekly: 0,
-        keep_monthly: 0,
-        keep_yearly: 0,
-    };
-
-    let (kept, moved) = rotate_files(dir, &config, false).expect("rotate_files failed");
-
-    assert_eq!(kept, 1);
-    assert_eq!(moved, 1);
-
-    assert!(file_exists(dir, "newer.txt")); // kept
-    assert!(!file_exists(dir, "older.txt")); // moved
-                                             // Original file in trash still exists
-    assert!(trash_exists(dir, "older.txt"));
-    // New file renamed to avoid conflict
-    assert!(trash_exists(dir, "older_1.txt"));
 }
 
 #[test]
