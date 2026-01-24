@@ -112,14 +112,14 @@ fn test_rotate_hourly_with_real_files() {
     let hour_secs = 3600;
 
     // Create files at distinct hours (using full hour offsets to avoid edge cases)
-    // We use 2+ hour differences to ensure files are in different hours
-    create_file_with_age(dir, "hour0.txt", 0); // now
-    create_file_with_age(dir, "hour0_b.txt", 60); // 1 min ago (same hour as hour0)
-    create_file_with_age(dir, "hour2.txt", hour_secs * 2); // 2 hours ago
-    create_file_with_age(dir, "hour3.txt", hour_secs * 3); // 3 hours ago
+    // hour2 and hour2_b are in the same hour; hour2_b is older
+    create_file_with_age(dir, "hour0.txt", 0); // now (kept by keep_last)
+    create_file_with_age(dir, "hour1.txt", hour_secs); // 1 hour ago
+    create_file_with_age(dir, "hour2.txt", hour_secs * 2); // 2 hours ago (newer in hour 2)
+    create_file_with_age(dir, "hour2_b.txt", hour_secs * 2 + 1800); // 2.5 hours ago (older in hour 2)
 
     let config = RetentionConfig {
-        keep_last: 0,
+        keep_last: 1,
         keep_hourly: 5,
         keep_daily: 0,
         keep_weekly: 0,
@@ -129,13 +129,13 @@ fn test_rotate_hourly_with_real_files() {
 
     let (kept, moved) = rotate_files(dir, &config, false).expect("rotate_files failed");
 
-    assert_eq!(kept, 3); // 3 unique hours (0, 2, 3 hours ago)
-    assert_eq!(moved, 1); // hour0_b is duplicate
+    assert_eq!(kept, 3); // hour0 (keep-last), hour1, hour2_b (oldest in hour 2)
+    assert_eq!(moved, 1); // hour2 is duplicate (newer in same hour)
 
-    assert!(file_exists(dir, "hour0.txt"));
-    assert!(file_exists(dir, "hour2.txt"));
-    assert!(file_exists(dir, "hour3.txt"));
-    assert!(trash_exists(dir, "hour0_b.txt"));
+    assert!(file_exists(dir, "hour0.txt")); // kept by keep-last
+    assert!(file_exists(dir, "hour1.txt")); // kept by hourly
+    assert!(file_exists(dir, "hour2_b.txt")); // kept by hourly (oldest in hour 2)
+    assert!(trash_exists(dir, "hour2.txt")); // moved (newer duplicate)
 }
 
 #[test]
@@ -146,17 +146,17 @@ fn test_rotate_daily_with_real_files() {
     let day_secs = 86400;
 
     // Create files on different days
-    // Use small offset (60s) for same-day files to avoid midnight edge cases
-    // Use 1.5 day offsets to ensure files are clearly on different calendar days
-    create_file_with_age(dir, "day0.txt", 0); // today
-    create_file_with_age(dir, "day0_b.txt", 60); // also today (1 min ago, definitely same day)
+    // day0 and day0_b are on the same day; day0_b is older (1 min ago)
+    // We keep the OLDEST file per day, so day0_b should be kept
+    create_file_with_age(dir, "day0.txt", 0); // today (newer, will be moved)
+    create_file_with_age(dir, "day0_b.txt", 60); // also today, 1 min ago (older, will be kept by daily)
     create_file_with_age(dir, "day1.txt", day_secs + day_secs / 2); // 1.5 days ago
     create_file_with_age(dir, "day2.txt", day_secs * 2 + day_secs / 2); // 2.5 days ago
 
     let config = RetentionConfig {
-        keep_last: 0,
+        keep_last: 1,
         keep_hourly: 0,
-        keep_daily: 4, // increased to cover 2.5 days ago
+        keep_daily: 4,
         keep_weekly: 0,
         keep_monthly: 0,
         keep_yearly: 0,
@@ -164,13 +164,16 @@ fn test_rotate_daily_with_real_files() {
 
     let (kept, moved) = rotate_files(dir, &config, false).expect("rotate_files failed");
 
-    assert_eq!(kept, 3); // 3 unique days
-    assert_eq!(moved, 1); // day0_b is duplicate
+    // day0.txt kept by keep-last (newest)
+    // day0_b.txt kept by daily (oldest in today)
+    // day1.txt and day2.txt kept by daily
+    assert_eq!(kept, 4);
+    assert_eq!(moved, 0);
 
-    assert!(file_exists(dir, "day0.txt"));
+    assert!(file_exists(dir, "day0.txt")); // kept by keep-last
+    assert!(file_exists(dir, "day0_b.txt")); // kept by daily (oldest in today)
     assert!(file_exists(dir, "day1.txt"));
     assert!(file_exists(dir, "day2.txt"));
-    assert!(trash_exists(dir, "day0_b.txt"));
 }
 
 #[test]
@@ -191,11 +194,13 @@ fn test_rotate_skips_hidden_files() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let dir = temp_dir.path();
 
-    create_file_with_age(dir, "visible.txt", 0);
+    // Create two visible files and one hidden file
+    create_file_with_age(dir, "visible1.txt", 0); // newest - kept by keep_last
+    create_file_with_age(dir, "visible2.txt", 60); // older - will be moved
     create_file_with_age(dir, ".hidden", 0);
 
     let config = RetentionConfig {
-        keep_last: 0,
+        keep_last: 1,
         keep_hourly: 0,
         keep_daily: 0,
         keep_weekly: 0,
@@ -205,14 +210,16 @@ fn test_rotate_skips_hidden_files() {
 
     let (kept, moved) = rotate_files(dir, &config, false).expect("rotate_files failed");
 
-    // visible.txt is not kept (no retention config)
-    // .hidden is skipped entirely
-    assert_eq!(kept, 0);
+    // visible1.txt is kept (by keep-last)
+    // visible2.txt is moved
+    // .hidden is skipped entirely (not counted)
+    assert_eq!(kept, 1);
     assert_eq!(moved, 1);
 
-    assert!(!file_exists(dir, "visible.txt"));
+    assert!(file_exists(dir, "visible1.txt"));
+    assert!(!file_exists(dir, "visible2.txt"));
     assert!(file_exists(dir, ".hidden")); // hidden file still there
-    assert!(trash_exists(dir, "visible.txt"));
+    assert!(trash_exists(dir, "visible2.txt"));
 }
 
 #[test]
@@ -248,13 +255,14 @@ fn test_rotate_handles_name_conflicts_in_trash() {
 
     // Create trash with existing file
     fs::create_dir(dir.join(".trash")).expect("Failed to create trash dir");
-    File::create(dir.join(".trash").join("file.txt")).expect("Failed to create file in trash");
+    File::create(dir.join(".trash").join("older.txt")).expect("Failed to create file in trash");
 
-    // Create file to be rotated
-    create_file_with_age(dir, "file.txt", 0);
+    // Create two files - one will be kept by keep_last, one will be moved
+    create_file_with_age(dir, "newer.txt", 0); // kept by keep_last
+    create_file_with_age(dir, "older.txt", 60); // moved to trash (conflicts with existing)
 
     let config = RetentionConfig {
-        keep_last: 0,
+        keep_last: 1,
         keep_hourly: 0,
         keep_daily: 0,
         keep_weekly: 0,
@@ -264,13 +272,15 @@ fn test_rotate_handles_name_conflicts_in_trash() {
 
     let (kept, moved) = rotate_files(dir, &config, false).expect("rotate_files failed");
 
-    assert_eq!(kept, 0);
+    assert_eq!(kept, 1);
     assert_eq!(moved, 1);
 
-    // Original file in trash still exists
-    assert!(trash_exists(dir, "file.txt"));
+    assert!(file_exists(dir, "newer.txt")); // kept
+    assert!(!file_exists(dir, "older.txt")); // moved
+                                             // Original file in trash still exists
+    assert!(trash_exists(dir, "older.txt"));
     // New file renamed to avoid conflict
-    assert!(trash_exists(dir, "file_1.txt"));
+    assert!(trash_exists(dir, "older_1.txt"));
 }
 
 #[test]

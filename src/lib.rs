@@ -144,12 +144,13 @@ pub fn select_files_to_keep_with_reasons(
         keep_reasons.insert(i, RetentionReason::KeepLast);
     }
 
-    // 2. Keep 1 file per hour for N hours
+    // 2. Keep 1 file per hour for N hours (oldest file in each hour)
     // Only consider files not already kept by previous policies
+    // Iterate in reverse (oldest first) to keep oldest file per period
     if config.keep_hourly > 0 {
         let hour_boundary = now - chrono::Duration::hours(i64::from(config.keep_hourly));
         let mut covered_hours: HashSet<(i32, u32, u32, u32)> = HashSet::new();
-        for (i, file) in files.iter().enumerate() {
+        for (i, file) in files.iter().enumerate().rev() {
             if keep_reasons.contains_key(&i) {
                 continue; // Skip files already kept by earlier policies
             }
@@ -162,12 +163,13 @@ pub fn select_files_to_keep_with_reasons(
         }
     }
 
-    // 3. Keep 1 file per day for N days
+    // 3. Keep 1 file per day for N days (oldest file in each day)
     // Only consider files not already kept by previous policies
+    // Iterate in reverse (oldest first) to keep oldest file per period
     if config.keep_daily > 0 {
         let day_boundary = today - chrono::Duration::days(i64::from(config.keep_daily));
         let mut covered_days: HashSet<NaiveDate> = HashSet::new();
-        for (i, file) in files.iter().enumerate() {
+        for (i, file) in files.iter().enumerate().rev() {
             if keep_reasons.contains_key(&i) {
                 continue; // Skip files already kept by earlier policies
             }
@@ -179,12 +181,13 @@ pub fn select_files_to_keep_with_reasons(
         }
     }
 
-    // 4. Keep 1 file per week for N weeks (ISO week system)
+    // 4. Keep 1 file per week for N weeks (ISO week system, oldest file in each week)
     // Only consider files not already kept by previous policies
+    // Iterate in reverse (oldest first) to keep oldest file per period
     if config.keep_weekly > 0 {
         let week_boundary = today - chrono::Duration::weeks(i64::from(config.keep_weekly));
         let mut covered_weeks: HashSet<(i32, u32)> = HashSet::new();
-        for (i, file) in files.iter().enumerate() {
+        for (i, file) in files.iter().enumerate().rev() {
             if keep_reasons.contains_key(&i) {
                 continue; // Skip files already kept by earlier policies
             }
@@ -197,12 +200,13 @@ pub fn select_files_to_keep_with_reasons(
         }
     }
 
-    // 5. Keep 1 file per month for N months
+    // 5. Keep 1 file per month for N months (oldest file in each month)
     // Only consider files not already kept by previous policies
+    // Iterate in reverse (oldest first) to keep oldest file per period
     if config.keep_monthly > 0 {
         let month_boundary = today - chrono::Duration::days(i64::from(config.keep_monthly) * 30);
         let mut covered_months: HashSet<(i32, u32)> = HashSet::new();
-        for (i, file) in files.iter().enumerate() {
+        for (i, file) in files.iter().enumerate().rev() {
             if keep_reasons.contains_key(&i) {
                 continue; // Skip files already kept by earlier policies
             }
@@ -215,12 +219,13 @@ pub fn select_files_to_keep_with_reasons(
         }
     }
 
-    // 6. Keep 1 file per year for N years
+    // 6. Keep 1 file per year for N years (oldest file in each year)
     // Only consider files not already kept by previous policies
+    // Iterate in reverse (oldest first) to keep oldest file per period
     if config.keep_yearly > 0 {
         let year_boundary = today - chrono::Duration::days(i64::from(config.keep_yearly) * 365);
         let mut covered_years: HashSet<i32> = HashSet::new();
-        for (i, file) in files.iter().enumerate() {
+        for (i, file) in files.iter().enumerate().rev() {
             if keep_reasons.contains_key(&i) {
                 continue; // Skip files already kept by earlier policies
             }
@@ -286,8 +291,16 @@ pub fn move_to_trash(file: &Path, trash_dir: &Path, dry_run: bool) -> Result<()>
 /// Rotates files in a directory based on retention policies.
 ///
 /// # Errors
-/// Returns an error if the directory cannot be read, trash cannot be created, or files cannot be moved.
+/// Returns an error if:
+/// - `keep_last` is 0 (must be at least 1)
+/// - The directory cannot be read
+/// - Trash directory cannot be created
+/// - Files cannot be moved
 pub fn rotate_files(dir: &Path, config: &RetentionConfig, dry_run: bool) -> Result<(usize, usize)> {
+    if config.keep_last == 0 {
+        anyhow::bail!("keep-last must be at least 1");
+    }
+
     // Create trash directory
     let trash_dir = dir.join(".trash");
     if !dry_run && !trash_dir.exists() {
@@ -430,23 +443,24 @@ mod tests {
             ..zero_config()
         };
 
-        // Create files in different hours
+        // Create files in different hours (sorted newest-first like scan_files does)
+        // file4 is newer than file3 but in the same hour
         let files = vec![
             make_file_info_with_time("file1.txt", now),
             make_file_info_with_time("file2.txt", now - chrono::Duration::hours(1)),
-            make_file_info_with_time("file3.txt", now - chrono::Duration::hours(2)),
             make_file_info_with_time(
                 "file4.txt",
                 now - chrono::Duration::hours(2) + chrono::Duration::minutes(30),
-            ), // same hour as file3
+            ), // hour 10, newer
+            make_file_info_with_time("file3.txt", now - chrono::Duration::hours(2)), // hour 10, older
         ];
 
         let keep = select_files_to_keep_with_datetime(&files, &config, now);
         assert_eq!(keep.len(), 3); // 3 unique hours
         assert!(keep.contains(&0)); // hour 12
         assert!(keep.contains(&1)); // hour 11
-        assert!(keep.contains(&2)); // hour 10 (first/latest one)
-        assert!(!keep.contains(&3)); // same hour as file3, not kept
+        assert!(keep.contains(&3)); // hour 10 (oldest file in that hour)
+        assert!(!keep.contains(&2)); // same hour as file3, not kept (newer)
     }
 
     #[test]
@@ -458,20 +472,21 @@ mod tests {
             ..zero_config()
         };
 
-        // Create files for different days
+        // Create files for different days (sorted newest-first like scan_files does)
+        // file3 and file4 are on the same day, but file4 is older
         let files = vec![
             make_file_info("file1.txt", today),
             make_file_info("file2.txt", today - chrono::Duration::days(1)),
-            make_file_info("file3.txt", today - chrono::Duration::days(2)),
-            make_file_info("file4.txt", today - chrono::Duration::days(2)), // duplicate day
+            make_file_info("file3.txt", today - chrono::Duration::days(2)), // newer on day -2
+            make_file_info("file4.txt", today - chrono::Duration::days(2)), // older on day -2 (same day)
         ];
 
         let keep = select_files_to_keep_with_datetime(&files, &config, now);
         assert_eq!(keep.len(), 3);
-        assert!(keep.contains(&0));
-        assert!(keep.contains(&1));
-        assert!(keep.contains(&2));
-        assert!(!keep.contains(&3)); // duplicate day
+        assert!(keep.contains(&0)); // today
+        assert!(keep.contains(&1)); // yesterday
+        assert!(keep.contains(&3)); // 2 days ago (oldest file on that day)
+        assert!(!keep.contains(&2)); // duplicate day, not kept
     }
 
     #[test]
@@ -506,20 +521,21 @@ mod tests {
             ..zero_config()
         };
 
-        // Create files in different months
+        // Create files in different months (sorted newest-first like scan_files does)
+        // file2 and file3 are in the same month (May), but file3 is older
         let files = vec![
             make_file_info("file1.txt", NaiveDate::from_ymd_opt(2024, 6, 15).unwrap()),
-            make_file_info("file2.txt", NaiveDate::from_ymd_opt(2024, 5, 10).unwrap()),
-            make_file_info("file3.txt", NaiveDate::from_ymd_opt(2024, 5, 5).unwrap()), // same month
+            make_file_info("file2.txt", NaiveDate::from_ymd_opt(2024, 5, 10).unwrap()), // May, newer
+            make_file_info("file3.txt", NaiveDate::from_ymd_opt(2024, 5, 5).unwrap()), // May, older
             make_file_info("file4.txt", NaiveDate::from_ymd_opt(2024, 4, 20).unwrap()),
         ];
 
         let keep = select_files_to_keep_with_datetime(&files, &config, now);
         assert_eq!(keep.len(), 3);
-        assert!(keep.contains(&0));
-        assert!(keep.contains(&1));
-        assert!(!keep.contains(&2)); // duplicate month
-        assert!(keep.contains(&3));
+        assert!(keep.contains(&0)); // June
+        assert!(keep.contains(&2)); // May (oldest file in that month)
+        assert!(!keep.contains(&1)); // May duplicate, not kept (newer)
+        assert!(keep.contains(&3)); // April
     }
 
     #[test]
@@ -530,20 +546,21 @@ mod tests {
             ..zero_config()
         };
 
-        // Create files in different years
+        // Create files in different years (sorted newest-first like scan_files does)
+        // file2 and file3 are in the same year (2023), but file3 is older
         let files = vec![
             make_file_info("file1.txt", NaiveDate::from_ymd_opt(2024, 6, 15).unwrap()),
-            make_file_info("file2.txt", NaiveDate::from_ymd_opt(2023, 3, 10).unwrap()),
-            make_file_info("file3.txt", NaiveDate::from_ymd_opt(2023, 1, 5).unwrap()), // same year
+            make_file_info("file2.txt", NaiveDate::from_ymd_opt(2023, 3, 10).unwrap()), // 2023, newer
+            make_file_info("file3.txt", NaiveDate::from_ymd_opt(2023, 1, 5).unwrap()), // 2023, older
             make_file_info("file4.txt", NaiveDate::from_ymd_opt(2022, 12, 20).unwrap()),
         ];
 
         let keep = select_files_to_keep_with_datetime(&files, &config, now);
         assert_eq!(keep.len(), 3);
-        assert!(keep.contains(&0));
-        assert!(keep.contains(&1));
-        assert!(!keep.contains(&2)); // duplicate year
-        assert!(keep.contains(&3));
+        assert!(keep.contains(&0)); // 2024
+        assert!(keep.contains(&2)); // 2023 (oldest file in that year)
+        assert!(!keep.contains(&1)); // 2023 duplicate, not kept (newer)
+        assert!(keep.contains(&3)); // 2022
     }
 
     #[test]
@@ -783,7 +800,7 @@ mod tests {
 
     #[test]
     fn test_cascading_same_period_multiple_files() {
-        // When multiple files exist in the same period, later policy picks the latest uncovered file.
+        // When multiple files exist in the same period, later policy picks the oldest uncovered file.
         let now = Local.with_ymd_and_hms(2024, 6, 15, 12, 0, 0).unwrap();
         let config = RetentionConfig {
             keep_last: 1,
@@ -802,8 +819,8 @@ mod tests {
 
         assert_eq!(keep.len(), 3);
         assert!(keep.contains(&0)); // keep-last
-        assert!(keep.contains(&1)); // daily (first uncovered for today)
-        assert!(!keep.contains(&2)); // today already covered
+        assert!(keep.contains(&2)); // daily (oldest uncovered for today)
+        assert!(!keep.contains(&1)); // today already covered by index 2
         assert!(keep.contains(&3)); // daily (yesterday)
     }
 }

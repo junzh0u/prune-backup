@@ -3,6 +3,17 @@ use clap::Parser;
 use prune_backup::{rotate_files, RetentionConfig};
 use std::path::PathBuf;
 
+fn parse_keep_last(s: &str) -> Result<usize, String> {
+    let val: usize = s
+        .parse()
+        .map_err(|_| format!("'{s}' is not a valid number"))?;
+    if val == 0 {
+        Err("keep-last must be at least 1".to_string())
+    } else {
+        Ok(val)
+    }
+}
+
 #[derive(Parser, Debug)]
 #[command(name = "prune-backup")]
 #[command(
@@ -12,8 +23,8 @@ struct Args {
     /// Directory to scan for files
     directory: PathBuf,
 
-    /// Keep the last N backups
-    #[arg(long = "keep-last", default_value = "5")]
+    /// Keep the last N backups (must be at least 1)
+    #[arg(long = "keep-last", default_value = "5", value_parser = parse_keep_last)]
     keep_last: usize,
 
     /// Keep backups for the last N hours (1 per hour)
