@@ -5,6 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 /// Reason why a file was kept by the retention policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -339,13 +340,35 @@ pub fn select_files_to_keep(files: &[FileInfo], config: &RetentionConfig) -> Has
     select_files_to_keep_with_datetime(files, config, now)
 }
 
-/// Moves a file to the system trash.
+/// Moves a file to the system trash, or uses a custom command if provided.
+///
+/// When using a custom command, `{}` in the command is replaced with the file path.
+/// If `{}` is not present, the file path is appended to the command.
 ///
 /// # Errors
 /// Returns an error if the file cannot be moved to trash.
-pub fn move_to_trash(file: &Path, dry_run: bool) -> Result<()> {
+pub fn move_to_trash(file: &Path, dry_run: bool, trash_cmd: Option<&str>) -> Result<()> {
     if dry_run {
         println!("Would move to trash: {}", file.display());
+    } else if let Some(cmd) = trash_cmd {
+        let escaped_path = shell_escape::escape(file.to_string_lossy());
+        let full_cmd = if cmd.contains("{}") {
+            cmd.replace("{}", &escaped_path)
+        } else {
+            format!("{cmd} {escaped_path}")
+        };
+        let status = Command::new("sh")
+            .arg("-c")
+            .arg(&full_cmd)
+            .status()
+            .context("Failed to execute trash command")?;
+        if !status.success() {
+            anyhow::bail!(
+                "Trash command failed with exit code: {}",
+                status.code().unwrap_or(-1)
+            );
+        }
+        println!("Moved to trash: {}", file.display());
     } else {
         trash::delete(file).context("Failed to move file to trash")?;
         println!("Moved to trash: {}", file.display());
@@ -361,7 +384,12 @@ pub fn move_to_trash(file: &Path, dry_run: bool) -> Result<()> {
 /// - `keep_last` is 0 (must be at least 1)
 /// - The directory cannot be read
 /// - Files cannot be moved to trash
-pub fn rotate_files(dir: &Path, config: &RetentionConfig, dry_run: bool) -> Result<(usize, usize)> {
+pub fn rotate_files(
+    dir: &Path,
+    config: &RetentionConfig,
+    dry_run: bool,
+    trash_cmd: Option<&str>,
+) -> Result<(usize, usize)> {
     if config.keep_last == 0 {
         anyhow::bail!("keep-last must be at least 1");
     }
@@ -389,7 +417,7 @@ pub fn rotate_files(dir: &Path, config: &RetentionConfig, dry_run: bool) -> Resu
     let mut moved_count = 0;
     for (i, file) in files.iter().enumerate() {
         if !keep_reasons.contains_key(&i) {
-            move_to_trash(&file.path, dry_run)?;
+            move_to_trash(&file.path, dry_run, trash_cmd)?;
             moved_count += 1;
         }
     }

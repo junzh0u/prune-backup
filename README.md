@@ -29,6 +29,7 @@ prune-backup <DIRECTORY> [OPTIONS]
 | `--keep-monthly <N>` | 12 | Keep one backup per month for the last N months |
 | `--keep-yearly <N>` | 10 | Keep one backup per year for the last N years |
 | `--dry-run` | - | Show what would be moved without actually moving files |
+| `--trash-cmd <CMD>` | - | Use a custom command to trash files instead of the system trash |
 
 ### Examples
 
@@ -41,6 +42,15 @@ prune-backup /path/to/backups --keep-last 10 --keep-daily 30
 
 # Preview what would be pruned
 prune-backup /path/to/backups --dry-run
+
+# Use a custom trash command (permanently delete files)
+prune-backup /path/to/backups --trash-cmd "rm"
+
+# Use trash-cli on Linux
+prune-backup /path/to/backups --trash-cmd "trash-put"
+
+# Move files to a custom directory using {} placeholder
+prune-backup /path/to/backups --trash-cmd "mv {} /path/to/trash/"
 ```
 
 ## Configuration File
@@ -72,9 +82,16 @@ Configuration priority (highest to lowest):
    - **keep-weekly**: Keeps the oldest file from each ISO week (Monday-Sunday)
    - **keep-monthly**: Keeps the oldest file from each month
    - **keep-yearly**: Keeps the oldest file from each year
-4. Moves files not matching any policy to the system trash
+4. Moves files not matching any policy to the system trash (or uses a custom command if `--trash-cmd` is specified)
 
-Files are never permanently deleted—they're moved to your system's trash/recycle bin for manual review or recovery.
+### Custom Trash Command
+
+The `--trash-cmd` option allows you to specify a custom command for handling files to be removed. The file path is passed to the command in one of two ways:
+
+- **With `{}` placeholder**: If your command contains `{}`, it will be replaced with the (shell-escaped) file path. Example: `--trash-cmd "mv {} /backup/trash/"`
+- **Without placeholder**: If no `{}` is present, the file path is appended to the end of the command. Example: `--trash-cmd "rm"` becomes `rm /path/to/file`
+
+Files are never permanently deleted by default—they're moved to your system's trash/recycle bin for manual review or recovery.
 
 ## License
 

@@ -50,6 +50,10 @@ struct Args {
     /// Dry run - show what would be moved without actually moving
     #[arg(long)]
     dry_run: bool,
+
+    /// Custom command to trash files (receives file path as argument)
+    #[arg(long = "trash-cmd")]
+    trash_cmd: Option<String>,
 }
 
 fn main() -> Result<()> {
@@ -76,7 +80,12 @@ fn main() -> Result<()> {
 
     println!("Scanning {}...", args.directory.display());
 
-    let (kept, moved) = rotate_files(&args.directory, &config, args.dry_run)?;
+    let (kept, moved) = rotate_files(
+        &args.directory,
+        &config,
+        args.dry_run,
+        args.trash_cmd.as_deref(),
+    )?;
 
     if args.dry_run {
         println!("Dry run complete. Would keep {kept} files, move {moved} to trash.");

@@ -18,6 +18,136 @@ fn file_exists(dir: &Path, name: &str) -> bool {
     dir.join(name).exists()
 }
 
+#[test]
+fn test_rotate_with_custom_trash_cmd() {
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let dir = temp_dir.path();
+
+    // Create a trash subdirectory for our custom command
+    let trash_dir = dir.join("custom_trash");
+    fs::create_dir(&trash_dir).expect("Failed to create trash dir");
+
+    // Create files with different ages
+    create_file_with_age(dir, "file1.txt", 0); // newest - kept
+    create_file_with_age(dir, "file2.txt", 60); // older - will be trashed
+
+    let config = RetentionConfig {
+        keep_last: 1,
+        keep_hourly: 0,
+        keep_daily: 0,
+        keep_weekly: 0,
+        keep_monthly: 0,
+        keep_yearly: 0,
+    };
+
+    // Use mv command with {} placeholder for file path
+    let trash_cmd = format!("mv {{}} {}", trash_dir.display());
+
+    let (kept, moved) =
+        rotate_files(dir, &config, false, Some(&trash_cmd)).expect("rotate_files failed");
+
+    assert_eq!(kept, 1);
+    assert_eq!(moved, 1);
+
+    // file1.txt should still be in the original directory
+    assert!(file_exists(dir, "file1.txt"));
+    // file2.txt should have been moved to trash_dir
+    assert!(!file_exists(dir, "file2.txt"));
+    assert!(file_exists(&trash_dir, "file2.txt"));
+}
+
+#[test]
+fn test_rotate_with_custom_trash_cmd_handles_spaces_in_path() {
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let dir = temp_dir.path();
+
+    // Create a trash subdirectory
+    let trash_dir = dir.join("custom_trash");
+    fs::create_dir(&trash_dir).expect("Failed to create trash dir");
+
+    // Create a file with spaces in the name
+    create_file_with_age(dir, "file with spaces.txt", 60);
+    create_file_with_age(dir, "keeper.txt", 0);
+
+    let config = RetentionConfig {
+        keep_last: 1,
+        keep_hourly: 0,
+        keep_daily: 0,
+        keep_weekly: 0,
+        keep_monthly: 0,
+        keep_yearly: 0,
+    };
+
+    let trash_cmd = format!("mv {{}} {}", trash_dir.display());
+
+    let (kept, moved) =
+        rotate_files(dir, &config, false, Some(&trash_cmd)).expect("rotate_files failed");
+
+    assert_eq!(kept, 1);
+    assert_eq!(moved, 1);
+
+    assert!(file_exists(dir, "keeper.txt"));
+    assert!(!file_exists(dir, "file with spaces.txt"));
+    assert!(file_exists(&trash_dir, "file with spaces.txt"));
+}
+
+#[test]
+fn test_rotate_with_failing_trash_cmd() {
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let dir = temp_dir.path();
+
+    create_file_with_age(dir, "file1.txt", 0);
+    create_file_with_age(dir, "file2.txt", 60);
+
+    let config = RetentionConfig {
+        keep_last: 1,
+        keep_hourly: 0,
+        keep_daily: 0,
+        keep_weekly: 0,
+        keep_monthly: 0,
+        keep_yearly: 0,
+    };
+
+    // Use a command that will fail
+    let result = rotate_files(dir, &config, false, Some("false"));
+
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(err.to_string().contains("exit code"));
+
+    // Both files should still exist since the command failed
+    assert!(file_exists(dir, "file1.txt"));
+    assert!(file_exists(dir, "file2.txt"));
+}
+
+#[test]
+fn test_rotate_with_trash_cmd_dry_run() {
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let dir = temp_dir.path();
+
+    create_file_with_age(dir, "file1.txt", 0);
+    create_file_with_age(dir, "file2.txt", 60);
+
+    let config = RetentionConfig {
+        keep_last: 1,
+        keep_hourly: 0,
+        keep_daily: 0,
+        keep_weekly: 0,
+        keep_monthly: 0,
+        keep_yearly: 0,
+    };
+
+    // Even with a trash_cmd, dry_run should not execute it
+    let (kept, moved) = rotate_files(dir, &config, true, Some("rm")).expect("rotate_files failed");
+
+    assert_eq!(kept, 1);
+    assert_eq!(moved, 1);
+
+    // Both files should still exist in dry run mode
+    assert!(file_exists(dir, "file1.txt"));
+    assert!(file_exists(dir, "file2.txt"));
+}
+
 /// This test requires a GUI environment (Finder on macOS) to move files to trash.
 /// Run with: cargo test -- --ignored
 #[test]
@@ -40,7 +170,7 @@ fn test_rotate_keeps_recent_files() {
         keep_yearly: 0,
     };
 
-    let (kept, moved) = rotate_files(dir, &config, false).expect("rotate_files failed");
+    let (kept, moved) = rotate_files(dir, &config, false, None).expect("rotate_files failed");
 
     assert_eq!(kept, 2);
     assert_eq!(moved, 1);
@@ -68,7 +198,7 @@ fn test_rotate_dry_run_does_not_move_files() {
         keep_yearly: 0,
     };
 
-    let (kept, moved) = rotate_files(dir, &config, true).expect("rotate_files failed");
+    let (kept, moved) = rotate_files(dir, &config, true, None).expect("rotate_files failed");
 
     assert_eq!(kept, 1);
     assert_eq!(moved, 1);
@@ -104,7 +234,7 @@ fn test_rotate_hourly_with_real_files() {
         keep_yearly: 0,
     };
 
-    let (kept, moved) = rotate_files(dir, &config, false).expect("rotate_files failed");
+    let (kept, moved) = rotate_files(dir, &config, false, None).expect("rotate_files failed");
 
     assert_eq!(kept, 3); // hour0 (keep-last), hour1, hour2_b (oldest in hour 2)
     assert_eq!(moved, 1); // hour2 is duplicate (newer in same hour)
@@ -139,7 +269,7 @@ fn test_rotate_daily_with_real_files() {
         keep_yearly: 0,
     };
 
-    let (kept, moved) = rotate_files(dir, &config, false).expect("rotate_files failed");
+    let (kept, moved) = rotate_files(dir, &config, false, None).expect("rotate_files failed");
 
     // day0.txt kept by keep-last (newest)
     // day0_b.txt kept by daily (oldest in today)
@@ -160,7 +290,7 @@ fn test_rotate_empty_directory() {
 
     let config = RetentionConfig::default();
 
-    let (kept, moved) = rotate_files(dir, &config, false).expect("rotate_files failed");
+    let (kept, moved) = rotate_files(dir, &config, false, None).expect("rotate_files failed");
 
     assert_eq!(kept, 0);
     assert_eq!(moved, 0);
@@ -188,7 +318,7 @@ fn test_rotate_skips_hidden_files() {
         keep_yearly: 0,
     };
 
-    let (kept, moved) = rotate_files(dir, &config, false).expect("rotate_files failed");
+    let (kept, moved) = rotate_files(dir, &config, false, None).expect("rotate_files failed");
 
     // visible1.txt is kept (by keep-last)
     // visible2.txt is moved
@@ -218,7 +348,7 @@ fn test_rotate_skips_directories() {
         keep_yearly: 0,
     };
 
-    let (kept, moved) = rotate_files(dir, &config, false).expect("rotate_files failed");
+    let (kept, moved) = rotate_files(dir, &config, false, None).expect("rotate_files failed");
 
     assert_eq!(kept, 1);
     assert_eq!(moved, 0);
@@ -252,7 +382,7 @@ fn test_rotate_cascading_with_real_files() {
         keep_yearly: 0,
     };
 
-    let (kept, moved) = rotate_files(dir, &config, false).expect("rotate_files failed");
+    let (kept, moved) = rotate_files(dir, &config, false, None).expect("rotate_files failed");
 
     // All 6 files should be kept by different policies
     assert_eq!(kept, 6);
