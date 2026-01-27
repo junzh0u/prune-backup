@@ -358,17 +358,17 @@ fn test_rotate_skips_directories() {
 }
 
 #[test]
-fn test_rotate_cascading_with_real_files() {
+fn test_rotate_multiple_policies_with_real_files() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let dir = temp_dir.path();
 
     let hour_secs = 3600;
     let day_secs = 86400;
 
-    // Create files that test cascading behavior
-    create_file_with_age(dir, "recent1.txt", 0); // keep-last
-    create_file_with_age(dir, "recent2.txt", 60); // keep-last
-    create_file_with_age(dir, "hourly1.txt", hour_secs); // hourly (not covered by keep-last)
+    // Create files that are kept by different policies (policies are applied independently)
+    create_file_with_age(dir, "recent1.txt", 0); // keep-last + hourly + daily
+    create_file_with_age(dir, "recent2.txt", 60); // keep-last + hourly + daily
+    create_file_with_age(dir, "hourly1.txt", hour_secs); // hourly
     create_file_with_age(dir, "hourly2.txt", hour_secs * 2); // hourly
     create_file_with_age(dir, "daily1.txt", day_secs); // daily
     create_file_with_age(dir, "daily2.txt", day_secs * 2); // daily
@@ -384,7 +384,7 @@ fn test_rotate_cascading_with_real_files() {
 
     let (kept, moved) = rotate_files(dir, &config, false, None).expect("rotate_files failed");
 
-    // All 6 files should be kept by different policies
+    // All 6 files should be kept (some by multiple policies)
     assert_eq!(kept, 6);
     assert_eq!(moved, 0);
 

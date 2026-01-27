@@ -75,14 +75,15 @@ Configuration priority (highest to lowest):
 
 1. Scans all non-hidden files in the target directory
 2. Reads file modification timestamps (falls back to creation time if unavailable)
-3. Applies retention policies in cascading order (each policy only considers files not already retained):
+3. Applies retention policies independently (a file can be kept by multiple policies):
    - **keep-last**: Keeps the N most recent files
-   - **keep-hourly**: Keeps the oldest file from each hour
-   - **keep-daily**: Keeps the oldest file from each day
-   - **keep-weekly**: Keeps the oldest file from each ISO week (Monday-Sunday)
-   - **keep-monthly**: Keeps the oldest file from each month
-   - **keep-yearly**: Keeps the oldest file from each year
-4. Moves files not matching any policy to the system trash (or uses a custom command if `--trash-cmd` is specified)
+   - **keep-hourly**: Keeps the oldest file from each hour within the retention window
+   - **keep-daily**: Keeps the oldest file from each day within the retention window
+   - **keep-weekly**: Keeps the oldest file from each ISO week (Monday-Sunday) within the retention window
+   - **keep-monthly**: Keeps the oldest file from each month within the retention window
+   - **keep-yearly**: Keeps the oldest file from each year within the retention window
+4. Logs which policies matched each kept file (e.g., `Keeping: backup.tar.gz (keep-last, daily, monthly)`)
+5. Moves files not matching any policy to the system trash (or uses a custom command if `--trash-cmd` is specified)
 
 ### Custom Trash Command
 

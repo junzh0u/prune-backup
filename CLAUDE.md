@@ -39,15 +39,15 @@ cargo run -- /path/to/backups --dry-run
 - `RetentionConfig` - All retention policy values (keep_last, keep_hourly, etc.)
 
 **Core algorithm in `select_files_to_keep_with_datetime()`:**
-Retention policies are applied in cascading order. Each policy only considers files not already kept by previous policies:
-1. keep-last (absolute count)
-2. keep-hourly (1 per hour within N hours)
-3. keep-daily (1 per day within N days)
-4. keep-weekly (1 per ISO week within N weeks)
-5. keep-monthly (1 per month within N months)
-6. keep-yearly (1 per year within N years)
+Retention policies are applied independently to all files. A file can be kept by multiple policies, and logs show all matching policies:
+1. keep-last (absolute count of newest files)
+2. keep-hourly (oldest file per hour within N hours)
+3. keep-daily (oldest file per day within N days)
+4. keep-weekly (oldest file per ISO week within N weeks)
+5. keep-monthly (oldest file per month within N months)
+6. keep-yearly (oldest file per year within N years)
 
-Files are sorted newest-first, so the "latest" file in each time period is the first encountered.
+Files are sorted newest-first, then iterated in reverse (oldest-first) to select the oldest file per time period.
 
 **Testing approach:**
 - Unit tests in `src/lib.rs` use mock `FileInfo` with controlled timestamps
