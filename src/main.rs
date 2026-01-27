@@ -78,6 +78,14 @@ fn main() -> Result<()> {
         file_config.as_ref(),
     );
 
+    println!("Retention policy:");
+    println!("  keep-last:    {}", config.keep_last);
+    println!("  keep-hourly:  {}", config.keep_hourly);
+    println!("  keep-daily:   {}", config.keep_daily);
+    println!("  keep-weekly:  {}", config.keep_weekly);
+    println!("  keep-monthly: {}", config.keep_monthly);
+    println!("  keep-yearly:  {}", config.keep_yearly);
+    println!();
     println!("Scanning {}...", args.directory.display());
 
     let (kept, moved) = rotate_files(
