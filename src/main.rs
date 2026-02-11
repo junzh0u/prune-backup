@@ -85,7 +85,6 @@ fn main() -> Result<()> {
     println!("  keep-weekly:  {}", config.keep_weekly);
     println!("  keep-monthly: {}", config.keep_monthly);
     println!("  keep-yearly:  {}", config.keep_yearly);
-    println!();
     println!("Scanning {}...", args.directory.display());
 
     let (kept, moved) = rotate_files(
