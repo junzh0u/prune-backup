@@ -27,23 +27,23 @@ struct Args {
     #[arg(long = "keep-last", value_parser = parse_keep_last)]
     keep_last: Option<usize>,
 
-    /// Keep backups for the last N hours (1 per hour)
+    /// Keep 1 backup per hour for the N most recent hours with backups
     #[arg(long = "keep-hourly")]
     keep_hourly: Option<u32>,
 
-    /// Keep backups for the last N days (1 per day)
+    /// Keep 1 backup per day for the N most recent days with backups
     #[arg(long = "keep-daily")]
     keep_daily: Option<u32>,
 
-    /// Keep backups for the last N weeks (1 per week, ISO week system)
+    /// Keep 1 backup per week for the N most recent weeks with backups (ISO week system)
     #[arg(long = "keep-weekly")]
     keep_weekly: Option<u32>,
 
-    /// Keep backups for the last N months (1 per month)
+    /// Keep 1 backup per month for the N most recent months with backups
     #[arg(long = "keep-monthly")]
     keep_monthly: Option<u32>,
 
-    /// Keep backups for the last N years (1 per year)
+    /// Keep 1 backup per year for the N most recent years with backups
     #[arg(long = "keep-yearly")]
     keep_yearly: Option<u32>,
 

@@ -38,18 +38,17 @@ cargo run -- /path/to/backups --dry-run
 - `FileInfo` - File path + creation timestamp
 - `RetentionConfig` - All retention policy values (keep_last, keep_hourly, etc.)
 
-**Core algorithm in `select_files_to_keep_with_datetime()`:**
+**Core algorithm in `select_files_to_keep_with_reasons()`:**
 Retention policies are applied independently to all files. A file can be kept by multiple policies, and logs show all matching policies:
 1. keep-last (absolute count of newest files)
-2. keep-hourly (oldest file per hour within N hours)
-3. keep-daily (oldest file per day within N days)
-4. keep-weekly (oldest file per ISO week within N weeks)
-5. keep-monthly (oldest file per month within N months)
-6. keep-yearly (oldest file per year within N years)
+2. keep-hourly (oldest file per hour for N most recent hours that have files)
+3. keep-daily (oldest file per day for N most recent days that have files)
+4. keep-weekly (oldest file per ISO week for N most recent weeks that have files)
+5. keep-monthly (oldest file per month for N most recent months that have files)
+6. keep-yearly (oldest file per year for N most recent years that have files)
 
-Files are sorted newest-first, then iterated in reverse (oldest-first) to select the oldest file per time period.
+Time-based policies count only periods that actually have backup files — gaps without backups do not consume slots. For each policy, the N most recent unique periods are found (first pass, newest-first), then the oldest file in each period is selected (second pass, oldest-first).
 
 **Testing approach:**
 - Unit tests in `src/lib.rs` use mock `FileInfo` with controlled timestamps
 - Integration tests in `tests/integration.rs` use `tempfile` + `filetime` to create real files with specific modification times
-- The `_with_datetime` variant of selection allows injecting a fixed "now" for deterministic tests

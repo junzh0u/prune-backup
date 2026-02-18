@@ -23,11 +23,11 @@ prune-backup <DIRECTORY> [OPTIONS]
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--keep-last <N>` | 5 | Keep the last N backups (must be at least 1) |
-| `--keep-hourly <N>` | 24 | Keep one backup per hour for the last N hours |
-| `--keep-daily <N>` | 7 | Keep one backup per day for the last N days |
-| `--keep-weekly <N>` | 4 | Keep one backup per week for the last N weeks (ISO week system) |
-| `--keep-monthly <N>` | 12 | Keep one backup per month for the last N months |
-| `--keep-yearly <N>` | 10 | Keep one backup per year for the last N years |
+| `--keep-hourly <N>` | 24 | Keep one backup per hour for the N most recent hours with backups |
+| `--keep-daily <N>` | 7 | Keep one backup per day for the N most recent days with backups |
+| `--keep-weekly <N>` | 4 | Keep one backup per week for the N most recent weeks with backups (ISO week system) |
+| `--keep-monthly <N>` | 12 | Keep one backup per month for the N most recent months with backups |
+| `--keep-yearly <N>` | 10 | Keep one backup per year for the N most recent years with backups |
 | `--dry-run` | - | Show what would be moved without actually moving files |
 | `--trash-cmd <CMD>` | - | Use a custom command to trash files instead of the system trash |
 
@@ -77,11 +77,11 @@ Configuration priority (highest to lowest):
 2. Reads file modification timestamps (falls back to creation time if unavailable)
 3. Applies retention policies independently (a file can be kept by multiple policies):
    - **keep-last**: Keeps the N most recent files
-   - **keep-hourly**: Keeps the oldest file from each hour within the retention window
-   - **keep-daily**: Keeps the oldest file from each day within the retention window
-   - **keep-weekly**: Keeps the oldest file from each ISO week (Monday-Sunday) within the retention window
-   - **keep-monthly**: Keeps the oldest file from each month within the retention window
-   - **keep-yearly**: Keeps the oldest file from each year within the retention window
+   - **keep-hourly**: Keeps the oldest file from each of the N most recent hours that have backups
+   - **keep-daily**: Keeps the oldest file from each of the N most recent days that have backups
+   - **keep-weekly**: Keeps the oldest file from each of the N most recent ISO weeks (Monday-Sunday) that have backups
+   - **keep-monthly**: Keeps the oldest file from each of the N most recent months that have backups
+   - **keep-yearly**: Keeps the oldest file from each of the N most recent years that have backups
 4. Logs which policies matched each kept file (e.g., `Keeping: backup.tar.gz (keep-last, daily, monthly)`)
 5. Moves files not matching any policy to the system trash (or uses a custom command if `--trash-cmd` is specified)
 
