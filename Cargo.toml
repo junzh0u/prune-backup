@@ -1,6 +1,6 @@
 [package]
 name = "prune-backup"
-version = "0.1.3"
+version = "0.2.0"
 edition = "2021"
 description = "Prune backup files based on retention policies, keeping recent files and moving old ones to trash"
 license = "MIT"
