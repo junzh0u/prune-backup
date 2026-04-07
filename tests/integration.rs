@@ -219,7 +219,7 @@ fn test_rotate_hourly_with_real_files() {
     let hour_secs = 3600;
 
     // Create files at distinct hours (using full hour offsets to avoid edge cases)
-    // hour2 and hour2_b are in the same hour; hour2_b is older
+    // hour2 and hour2_b are in the same hour; hour2 is newer
     create_file_with_age(dir, "hour0.txt", 0); // now (kept by keep_last)
     create_file_with_age(dir, "hour1.txt", hour_secs); // 1 hour ago
     create_file_with_age(dir, "hour2.txt", hour_secs * 2); // 2 hours ago (newer in hour 2)
@@ -236,13 +236,13 @@ fn test_rotate_hourly_with_real_files() {
 
     let (kept, moved) = rotate_files(dir, &config, false, None).expect("rotate_files failed");
 
-    assert_eq!(kept, 3); // hour0 (keep-last), hour1, hour2_b (oldest in hour 2)
-    assert_eq!(moved, 1); // hour2 is duplicate (newer in same hour)
+    assert_eq!(kept, 3); // hour0 (keep-last), hour1, hour2 (newest in hour 2)
+    assert_eq!(moved, 1); // hour2_b is duplicate (older in same hour)
 
     assert!(file_exists(dir, "hour0.txt")); // kept by keep-last
     assert!(file_exists(dir, "hour1.txt")); // kept by hourly
-    assert!(file_exists(dir, "hour2_b.txt")); // kept by hourly (oldest in hour 2)
-    assert!(!file_exists(dir, "hour2.txt")); // moved to system trash
+    assert!(file_exists(dir, "hour2.txt")); // kept by hourly (newest in hour 2)
+    assert!(!file_exists(dir, "hour2_b.txt")); // moved to system trash
 }
 
 #[test]
@@ -253,10 +253,9 @@ fn test_rotate_daily_with_real_files() {
     let day_secs = 86400;
 
     // Create files on different days
-    // day0 and day0_b are on the same day; day0_b is older (1 min ago)
-    // We keep the OLDEST file per day, so day0_b should be kept
-    create_file_with_age(dir, "day0.txt", 0); // today (newer, will be moved)
-    create_file_with_age(dir, "day0_b.txt", 60); // also today, 1 min ago (older, will be kept by daily)
+    // day0 and day0_b are on the same day; day0 is newer
+    create_file_with_age(dir, "day0.txt", 0); // today (newest, kept by keep-last)
+    create_file_with_age(dir, "day0_b.txt", 60); // also today, 1 min ago (older, kept by daily as newest un-kept)
     create_file_with_age(dir, "day1.txt", day_secs + day_secs / 2); // 1.5 days ago
     create_file_with_age(dir, "day2.txt", day_secs * 2 + day_secs / 2); // 2.5 days ago
 
@@ -272,13 +271,13 @@ fn test_rotate_daily_with_real_files() {
     let (kept, moved) = rotate_files(dir, &config, false, None).expect("rotate_files failed");
 
     // day0.txt kept by keep-last (newest)
-    // day0_b.txt kept by daily (oldest in today)
+    // day0_b.txt kept by daily (newest un-kept on today)
     // day1.txt and day2.txt kept by daily
     assert_eq!(kept, 4);
     assert_eq!(moved, 0);
 
     assert!(file_exists(dir, "day0.txt")); // kept by keep-last
-    assert!(file_exists(dir, "day0_b.txt")); // kept by daily (oldest in today)
+    assert!(file_exists(dir, "day0_b.txt")); // kept by daily (newest un-kept on today)
     assert!(file_exists(dir, "day1.txt"));
     assert!(file_exists(dir, "day2.txt"));
 }
@@ -365,9 +364,9 @@ fn test_rotate_multiple_policies_with_real_files() {
     let hour_secs = 3600;
     let day_secs = 86400;
 
-    // Create files that are kept by different policies (policies are applied independently)
-    create_file_with_age(dir, "recent1.txt", 0); // keep-last + hourly + daily
-    create_file_with_age(dir, "recent2.txt", 60); // keep-last + hourly + daily
+    // Create files kept by different policies (applied sequentially)
+    create_file_with_age(dir, "recent1.txt", 0); // keep-last
+    create_file_with_age(dir, "recent2.txt", 60); // keep-last
     create_file_with_age(dir, "hourly1.txt", hour_secs); // hourly
     create_file_with_age(dir, "hourly2.txt", hour_secs * 2); // hourly
     create_file_with_age(dir, "daily1.txt", day_secs); // daily
@@ -384,7 +383,7 @@ fn test_rotate_multiple_policies_with_real_files() {
 
     let (kept, moved) = rotate_files(dir, &config, false, None).expect("rotate_files failed");
 
-    // All 6 files should be kept (some by multiple policies)
+    // All 6 files kept (each by exactly one policy)
     assert_eq!(kept, 6);
     assert_eq!(moved, 0);
 

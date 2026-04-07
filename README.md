@@ -23,11 +23,11 @@ prune-backup <DIRECTORY> [OPTIONS]
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--keep-last <N>` | 5 | Keep the last N backups (must be at least 1) |
-| `--keep-hourly <N>` | 24 | Keep one backup per hour for the N most recent hours with backups |
-| `--keep-daily <N>` | 7 | Keep one backup per day for the N most recent days with backups |
-| `--keep-weekly <N>` | 4 | Keep one backup per week for the N most recent weeks with backups (ISO week system) |
-| `--keep-monthly <N>` | 12 | Keep one backup per month for the N most recent months with backups |
-| `--keep-yearly <N>` | 10 | Keep one backup per year for the N most recent years with backups |
+| `--keep-hourly <N>` | 24 | Keep the latest backup per hour for the last N hours with backups |
+| `--keep-daily <N>` | 7 | Keep the latest backup per day for the last N days with backups |
+| `--keep-weekly <N>` | 4 | Keep the latest backup per week for the last N weeks with backups (ISO week system) |
+| `--keep-monthly <N>` | 12 | Keep the latest backup per month for the last N months with backups |
+| `--keep-yearly <N>` | 10 | Keep the latest backup per year for the last N years with backups |
 | `--dry-run` | - | Show what would be moved without actually moving files |
 | `--trash-cmd <CMD>` | - | Use a custom command to trash files instead of the system trash |
 
@@ -73,16 +73,18 @@ Configuration priority (highest to lowest):
 
 ## How It Works
 
+Follows [Proxmox-style retention semantics](https://pve.proxmox.com/wiki/Backup_and_Restore#vzdump_retention):
+
 1. Scans all non-hidden files in the target directory
 2. Reads file modification timestamps (falls back to creation time if unavailable)
-3. Applies retention policies independently (a file can be kept by multiple policies):
+3. Applies retention policies sequentially — each policy only considers files not already kept by a previous policy:
    - **keep-last**: Keeps the N most recent files
-   - **keep-hourly**: Keeps the oldest file from each of the N most recent hours that have backups
-   - **keep-daily**: Keeps the oldest file from each of the N most recent days that have backups
-   - **keep-weekly**: Keeps the oldest file from each of the N most recent ISO weeks (Monday-Sunday) that have backups
-   - **keep-monthly**: Keeps the oldest file from each of the N most recent months that have backups
-   - **keep-yearly**: Keeps the oldest file from each of the N most recent years that have backups
-4. Logs which policies matched each kept file (e.g., `Keeping: backup.tar.gz (keep-last, daily, monthly)`)
+   - **keep-hourly**: Keeps the latest un-kept file per hour for the last N hours with backups
+   - **keep-daily**: Keeps the latest un-kept file per day for the last N days with backups
+   - **keep-weekly**: Keeps the latest un-kept file per ISO week (Monday-Sunday) for the last N weeks with backups
+   - **keep-monthly**: Keeps the latest un-kept file per month for the last N months with backups
+   - **keep-yearly**: Keeps the latest un-kept file per year for the last N years with backups
+4. Logs which policy kept each file (e.g., `Keeping: backup.tar.gz (daily)`)
 5. Moves files not matching any policy to the system trash (or uses a custom command if `--trash-cmd` is specified)
 
 ### Custom Trash Command

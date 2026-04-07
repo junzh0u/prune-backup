@@ -43,15 +43,16 @@ just deploy-linux <host> [path]
 - `RetentionConfig` - All retention policy values (keep_last, keep_hourly, etc.)
 
 **Core algorithm in `select_files_to_keep_with_reasons()`:**
-Retention policies are applied independently to all files. A file can be kept by multiple policies, and logs show all matching policies:
+Follows [Proxmox-style retention semantics](https://pve.proxmox.com/wiki/Backup_and_Restore#vzdump_retention).
+Policies are applied sequentially — each policy only considers files not already kept by a previous policy. Each file gets exactly one retention reason:
 1. keep-last (absolute count of newest files)
-2. keep-hourly (oldest file per hour for N most recent hours that have files)
-3. keep-daily (oldest file per day for N most recent days that have files)
-4. keep-weekly (oldest file per ISO week for N most recent weeks that have files)
-5. keep-monthly (oldest file per month for N most recent months that have files)
-6. keep-yearly (oldest file per year for N most recent years that have files)
+2. keep-hourly (newest un-kept file per hour for N most recent hours with un-kept files)
+3. keep-daily (newest un-kept file per day for N most recent days with un-kept files)
+4. keep-weekly (newest un-kept file per ISO week for N most recent weeks with un-kept files)
+5. keep-monthly (newest un-kept file per month for N most recent months with un-kept files)
+6. keep-yearly (newest un-kept file per year for N most recent years with un-kept files)
 
-Time-based policies count only periods that actually have backup files — gaps without backups do not consume slots. For each policy, the N most recent unique periods are found (first pass, newest-first), then the oldest file in each period is selected (second pass, oldest-first).
+Time-based policies count only periods that have un-kept backup files — gaps without backups do not consume slots.
 
 **Testing approach:**
 - Unit tests in `src/lib.rs` use mock `FileInfo` with controlled timestamps
