@@ -15,7 +15,7 @@ fn parse_keep_last(s: &str) -> Result<usize, String> {
 }
 
 #[derive(Parser, Debug)]
-#[command(name = "prune-backup")]
+#[command(name = "prune-backup", version)]
 #[command(
     about = "Prune backup files based on creation date, keeping recent files and moving old ones to trash"
 )]
