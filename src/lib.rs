@@ -57,7 +57,7 @@ impl Default for RetentionConfig {
     fn default() -> Self {
         Self {
             keep_last: 5,
-            keep_hourly: 24,
+            keep_hourly: 0,
             keep_daily: 7,
             keep_weekly: 4,
             keep_monthly: 12,
@@ -437,7 +437,7 @@ mod tests {
     fn test_default_config() {
         let config = RetentionConfig::default();
         assert_eq!(config.keep_last, 5);
-        assert_eq!(config.keep_hourly, 24);
+        assert_eq!(config.keep_hourly, 0);
         assert_eq!(config.keep_daily, 7);
         assert_eq!(config.keep_weekly, 4);
         assert_eq!(config.keep_monthly, 12);
