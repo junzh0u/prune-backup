@@ -10,13 +10,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Run all checks (fmt, clippy, test)
-make all
+just check
 
 # Individual commands
-make fmt      # Check formatting
-make clippy   # Lint with pedantic warnings
-make test     # Run tests
-make install  # Install binary
+just fmt      # Check formatting
+just clippy   # Lint with pedantic warnings
+just test     # Run tests
+just install  # Install binary
+just fix      # Auto-fix formatting and clippy warnings
 
 # Run a specific test
 cargo test test_name
@@ -26,6 +27,9 @@ cargo run -- /path/to/backups --keep-last 5 --keep-daily 7
 
 # Dry run (no files moved)
 cargo run -- /path/to/backups --dry-run
+
+# Deploy to remote Linux host
+just deploy-linux <host> [path]
 ```
 
 ## Architecture
