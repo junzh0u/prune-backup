@@ -1,9 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 — 2026-04-07
+
+### Features
 
 - Adopt Proxmox-style retention semantics: keep newest (latest) file per period instead of oldest, apply policies sequentially (each policy only considers files not already kept by a previous policy)
+
+### Chores
+
 - Replace Makefile with justfile
+- Add CHANGELOG.md and use it for GitHub release notes
 
 ## 0.1.3 — 2026-02-18
 
