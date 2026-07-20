@@ -24,5 +24,4 @@ install:
 
 # Build Linux x86_64 binary and deploy to remote host
 deploy-linux host path="~/.local/bin":
-    cross build --target=x86_64-unknown-linux-musl --release
-    scp -O target/x86_64-unknown-linux-musl/release/prune-backup {{host}}:{{path}}/
+    cross-deploy -t x86_64-unknown-linux-musl {{host}} {{path}}
