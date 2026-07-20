@@ -6,6 +6,10 @@ description = "Prune backup files based on retention policies, keeping recent fi
 license = "MIT"
 repository = "https://github.com/junzh0u/prune-backup"
 
+# crates.io publish happens in CI (release.yml publish-crate job, gated on checks)
+[package.metadata.release]
+publish = false
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 chrono = "0.4"
