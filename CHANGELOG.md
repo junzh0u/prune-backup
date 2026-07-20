@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.1 — 2026-07-20
+
+### Fixes
+
+- Enable `-V`/`--version` flag
+
+### Chores
+
+- Disable hourly retention by default
+- Use cross-deploy helper for `just deploy-linux`
+
 ## 0.2.0 — 2026-04-07
 
 ### Features
