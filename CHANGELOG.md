@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2 — 2026-07-20
+
+### Chores
+
+- Fix clippy 1.97 `unnecessary_sort_by` lint that broke CI
+
 ## 0.2.1 — 2026-07-20
 
 ### Fixes
