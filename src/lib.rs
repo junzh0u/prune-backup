@@ -189,7 +189,7 @@ pub fn scan_files(dir: &Path) -> Result<Vec<FileInfo>> {
     }
 
     // Sort by creation time, newest first
-    files.sort_by(|a, b| b.created.cmp(&a.created));
+    files.sort_by_key(|f| std::cmp::Reverse(f.created));
     Ok(files)
 }
 
