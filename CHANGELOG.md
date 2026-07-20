@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.3 — 2026-07-20
+
+### Chores
+
+- Gate release jobs on fmt/clippy/test — a tag on a failing commit no longer produces a release
+- Publish to crates.io from CI via Trusted Publishing instead of locally
+
 ## 0.2.2 — 2026-07-20
 
 ### Chores
